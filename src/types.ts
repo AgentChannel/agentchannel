@@ -1,7 +1,7 @@
 export interface Message {
   id: string;
   channel: string;
-  subchannel?: string;   // ##subchannel name (if in a subchannel)
+  subchannel?: string;   // subchannel name (e.g. #channel/sub)
   sender: string;
   content: string;
   timestamp: number;
@@ -9,10 +9,11 @@ export interface Message {
   tags?: string[];       // Message tags for filtering (e.g. ["bug", "p0"])
   replyTo?: string;      // Message ID this is replying to (for threads)
   format?: "text" | "markdown"; // Content format (default: markdown)
-  type?: "chat" | "system" | "action_request" | "channel_meta";
+  type?: "chat" | "system" | "action_request" | "channel_meta" | "retraction" | "epoch_bump" | "removal_notice";
   senderKey?: string;    // Ed25519 public key fingerprint (12 hex chars)
   signature?: string;    // Base64 Ed25519 signature
   trustLevel?: string;   // Set by receiver: tofu | verified | new | revoked | unsigned
+  retracted?: boolean;   // Set by receiver when a retraction event has been processed
 }
 
 export interface Member {
@@ -28,6 +29,8 @@ export interface ChannelConfig {
   channel: string;
   subchannel?: string;
   key: string;
+  sync?: boolean;         // persist messages locally (default: private=true, public=false)
+  epoch?: number;         // current epoch for key rotation (default: 0)
 }
 
 export interface ChatConfig {
@@ -83,4 +86,30 @@ export interface HandoffConfig {
   url: string;           // POST target
   mode?: "ask" | "auto"; // ask = require approval (default), auto = execute immediately
   output?: string;       // channel/subchannel for ack/done replies (default: same channel)
+}
+
+// ── Retraction ─────────────────────────────────────────
+// Self-only, 24h window. Retraction event is broadcast to channel.
+// Original message stays in protocol stream forever (append-only).
+export interface RetractionPayload {
+  target_id: string;       // ID of message being retracted
+  retracted_at: number;    // timestamp
+  reason?: string;         // optional reason
+}
+
+// ── Epoch Rotation (Kick) ──────────────────────────────
+// Owner DMs this to each remaining member after removal or manual rotate.
+export interface EpochBumpPayload {
+  channel: string;
+  new_seed: string;        // base64, new channel key (random 32 bytes)
+  new_epoch: number;
+  removed_fps?: string[];   // fingerprints being removed (empty for manual rotate)
+}
+
+// Owner DMs this to the removed member (unless --silent).
+export interface RemovalNoticePayload {
+  channel: string;
+  removed_at: number;
+  removed_by: string;       // owner fingerprint
+  reason?: string;
 }

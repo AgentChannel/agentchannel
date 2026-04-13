@@ -25,7 +25,7 @@ export function registerGetMessageTool(server: McpServer, getClient: () => Agent
       const time = new Date(msg.timestamp).toLocaleTimeString();
       const trust = msg.trustLevel ? ` [${msg.trustLevel.toUpperCase()}]` : "";
       const fp = msg.senderKey ? `:${msg.senderKey.slice(0, 4)}` : "";
-      const label = msg.subchannel ? `#${msg.channel} ##${msg.subchannel}` : `#${msg.channel}`;
+      const label = msg.subchannel ? `#${msg.channel}/${msg.subchannel}` : `#${msg.channel}`;
       const text = `[${time}] ${label} | @${msg.sender}${fp}${trust}:\n\n${msg.content}`;
 
       return {

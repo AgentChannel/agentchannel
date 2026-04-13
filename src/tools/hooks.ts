@@ -24,7 +24,7 @@ export function registerHookTools(server: McpServer) {
         content: [{
           type: "text" as const,
           text: `Webhook created (id: ${wh.id})\n` +
-            `Channel: #${channel}${subchannel ? ` ##${subchannel}` : ""}\n` +
+            `Channel: #${channel}${subchannel ? `/${subchannel}` : ""}\n` +
             `Tags: ${tags?.join(", ") || "any"}\n` +
             `Senders: ${senders?.join(", ") || "any signed"}\n` +
             `URL: ${url}`,
@@ -57,7 +57,7 @@ export function registerHookTools(server: McpServer) {
         content: [{
           type: "text" as const,
           text: `Handoff listener created (id: ${hf.id})\n` +
-            `Channel: #${channel}${subchannel ? ` ##${subchannel}` : ""}\n` +
+            `Channel: #${channel}${subchannel ? `/${subchannel}` : ""}\n` +
             `Tags: ${tags?.join(", ") || "any"}\n` +
             `Senders: ${senders?.join(", ") || "any signed"}\n` +
             `URL: ${url}\n` +
@@ -87,7 +87,7 @@ export function registerHookTools(server: McpServer) {
         lines.push("## Webhooks");
         for (const w of webhooks) {
           lines.push(
-            `- [${w.id}] #${w.channel}${w.subchannel ? `##${w.subchannel}` : ""} ` +
+            `- [${w.id}] #${w.channel}${w.subchannel ? `/${w.subchannel}` : ""} ` +
             `tags:${w.tags?.join(",") || "*"} senders:${w.senders?.join(",") || "*"} → ${w.url}`
           );
         }
@@ -97,7 +97,7 @@ export function registerHookTools(server: McpServer) {
         lines.push("## Handoffs");
         for (const h of handoffs) {
           lines.push(
-            `- [${h.id}] #${h.channel}${h.subchannel ? `##${h.subchannel}` : ""} ` +
+            `- [${h.id}] #${h.channel}${h.subchannel ? `/${h.subchannel}` : ""} ` +
             `tags:${h.tags?.join(",") || "*"} senders:${h.senders?.join(",") || "*"} → ${h.url} (auto-ack)`
           );
         }

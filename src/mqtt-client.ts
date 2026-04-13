@@ -4,10 +4,12 @@ import { userInfo } from "node:os";
 import { execSync } from "node:child_process";
 import { deriveKey, deriveSubKey, hashRoom, hashSub, deriveDmKey, hashDm, encrypt, decrypt } from "./crypto.js";
 import { MessageStore } from "./store.js";
+import { LocalStore } from "./local-store.js";
 import { storeMessage, fetchHistory, registerMember } from "./persistence.js";
 import { ensureIdentity, signMessage, verifySignature, getFingerprint } from "./identity.js";
 import { checkTrust } from "./trust-store.js";
-import type { ChatConfig, SingleChannelConfig, Message, ChannelMeta, EncryptedPayload } from "./types.js";
+import { getSyncEnabled, updateChannelEpoch, getChannelEpoch } from "./config.js";
+import type { ChatConfig, SingleChannelConfig, Message, Member, ChannelMeta, EncryptedPayload, RetractionPayload, EpochBumpPayload, RemovalNoticePayload } from "./types.js";
 import type { Identity } from "./identity.js";
 
 const DEFAULT_BROKER = "mqtt://broker.emqx.io:1883";
@@ -36,7 +38,7 @@ interface ChannelState {
 }
 
 function displayName(state: { channel: string; subchannel?: string }): string {
-  return state.subchannel ? `##${state.subchannel}` : `#${state.channel}`;
+  return state.subchannel ? `#${state.channel}/${state.subchannel}` : `#${state.channel}`;
 }
 
 function fullId(state: { channel: string; subchannel?: string }): string {
@@ -50,6 +52,7 @@ export class AgentChatClient {
   private name: string;
   private broker: string;
   readonly store: MessageStore;
+  readonly localStore: LocalStore;
   private onMessage?: (msg: Message) => void;
   private onMeta?: (channel: string, meta: ChannelMeta) => void;
   private channelMeta: Map<string, ChannelMeta> = new Map();
@@ -60,6 +63,7 @@ export class AgentChatClient {
     this.name = config.name || getDefaultName();
     this.broker = config.broker || DEFAULT_BROKER;
     this.store = new MessageStore();
+    this.localStore = new LocalStore();
     this.identity = ensureIdentity();
     this.silent = config.silent || false;
 
@@ -196,6 +200,101 @@ export class AgentChatClient {
         msg.trustLevel = "unsigned";
       }
 
+      // Handle retraction messages — self-only, verify signature
+      if (msg.type === "retraction") {
+        try {
+          const retraction: RetractionPayload = JSON.parse(msg.content);
+          // Verify: retraction sender must match original message sender
+          const target = this.store.getMessageById(retraction.target_id);
+          if (target && target.senderKey && msg.senderKey === target.senderKey) {
+            this.store.addRetraction(retraction.target_id);
+            // Surface retraction as a system message
+            const sysMsg: Message = {
+              id: msg.id,
+              channel: state.channel,
+              subchannel: state.subchannel,
+              sender: "system",
+              content: `@${msg.sender} retracted message ${retraction.target_id}`,
+              timestamp: Date.now(),
+              type: "system",
+            };
+            this.store.addMessage(sysMsg);
+            if (this.onMessage) this.onMessage(sysMsg);
+          }
+        } catch {}
+        return;
+      }
+
+      // Handle epoch_bump DM — owner rotated channel key
+      if (msg.type === "epoch_bump") {
+        try {
+          const bump: EpochBumpPayload = JSON.parse(msg.content);
+          // Verify sender is a channel owner
+          const meta = this.channelMeta.get(bump.channel);
+          if (meta && msg.senderKey && meta.owners.includes(msg.senderKey)) {
+            // Apply epoch rotation: derive new key + hash, resubscribe
+            const newKey = deriveKey(bump.new_seed, bump.new_epoch);
+            const newHash = hashRoom(bump.new_seed, bump.new_epoch);
+
+            // Unsubscribe from old topic
+            for (const [hash, s] of this.channels) {
+              if (s.channel === bump.channel && !s.subchannel) {
+                if (this.client) {
+                  this.client.unsubscribe([this.msgTopic(hash), this.presTopic(hash)]);
+                }
+                this.channels.delete(hash);
+                break;
+              }
+            }
+
+            // Subscribe to new topic
+            this.channels.set(newHash, { channel: bump.channel, key: newKey, hash: newHash });
+            this.channelKeys.set(bump.channel, bump.new_seed);
+            if (this.client) {
+              this.client.subscribe([this.msgTopic(newHash), this.presTopic(newHash)], { qos: 1 });
+            }
+
+            // Update config
+            updateChannelEpoch(bump.channel, bump.new_seed, bump.new_epoch);
+
+            // System message
+            const kicked = bump.removed_fps?.length
+              ? `Members removed: ${bump.removed_fps.join(", ")}`
+              : "Manual key rotation";
+            const sysMsg: Message = {
+              id: randomBytes(4).toString("hex"),
+              channel: bump.channel,
+              sender: "system",
+              content: `Channel key rotated to epoch ${bump.new_epoch}. ${kicked}`,
+              timestamp: Date.now(),
+              type: "system",
+            };
+            this.store.addMessage(sysMsg);
+            if (this.onMessage) this.onMessage(sysMsg);
+          }
+        } catch {}
+        return;
+      }
+
+            // Handle removal_notice DM — you were removed from a channel
+      if (msg.type === "removal_notice") {
+        try {
+          const notice: RemovalNoticePayload = JSON.parse(msg.content);
+          const reason = notice.reason ? ` Reason: ${notice.reason}` : "";
+          const sysMsg: Message = {
+            id: randomBytes(4).toString("hex"),
+            channel: notice.channel,
+            sender: "system",
+            content: `You were removed from #${notice.channel} by ${notice.removed_by}.${reason}`,
+            timestamp: Date.now(),
+            type: "system",
+          };
+          this.store.addMessage(sysMsg);
+          if (this.onMessage) this.onMessage(sysMsg);
+        } catch {}
+        return;
+      }
+
       // Handle channel_meta messages — only accept from owner
       if (msg.type === "channel_meta") {
         try {
@@ -234,6 +333,10 @@ export class AgentChatClient {
       if (msg.type === "chat") {
         storeMessage(msg.id, state.hash, raw, msg.timestamp);
       }
+      // Persist locally (if sync enabled)
+      if (msg.type === "chat" && getSyncEnabled(state.channel, state.subchannel)) {
+        try { this.localStore.appendMessage(msg); } catch {}
+      }
       if (this.onMessage) {
         this.onMessage(msg);
       }
@@ -257,7 +360,7 @@ export class AgentChatClient {
       // Skip own presence
       if (data.name === this.name) return;
 
-      const label = subchannel ? `##${subchannel}` : `#${channel}`;
+      const label = subchannel ? `#${channel}/${subchannel}` : `#${channel}`;
       if (data.status === "online") {
         this.store.updateMember(data.name, channel, subchannel);
         const sysMsg: Message = {
@@ -397,6 +500,10 @@ export class AgentChatClient {
               continue;
             }
             this.store.addMessage(msg);
+            // Backfill local store from history
+            if (msg.type === "chat" && getSyncEnabled(state.channel, state.subchannel)) {
+              try { this.localStore.appendMessage(msg); } catch {}
+            }
           } catch {
             // Can't decrypt — wrong key or corrupted
           }
@@ -460,6 +567,187 @@ export class AgentChatClient {
           resolve();
         }
       });
+    });
+  }
+
+  // ── Kick / Epoch Rotation ───────────────────────────
+
+  // Shared: broadcast epoch_bump DM to members + apply rotation locally
+  private async broadcastEpochBump(channelName: string, recipients: Member[], bump: EpochBumpPayload): Promise<void> {
+    if (!this.client) throw new Error("Not connected");
+
+    // DM epoch_bump to each recipient
+    for (const member of recipients) {
+      if (!member.fingerprint || member.fingerprint === this.identity.fingerprint) continue;
+      const dmMsg: Message = {
+        id: randomBytes(8).toString("hex"),
+        channel: `dm:${[this.identity.fingerprint, member.fingerprint].sort().join(":")}`,
+        sender: this.name,
+        content: JSON.stringify(bump),
+        timestamp: Date.now(),
+        type: "epoch_bump",
+        senderKey: this.identity.fingerprint,
+      };
+      const dataToSign = JSON.stringify(dmMsg);
+      dmMsg.signature = signMessage(dataToSign, this.identity.privateKeyPem);
+
+      const key = deriveDmKey(this.identity.fingerprint, member.fingerprint);
+      const hash = hashDm(this.identity.fingerprint, member.fingerprint);
+      const encrypted = encrypt(JSON.stringify(dmMsg), key);
+      this.client.publish(this.msgTopic(hash), JSON.stringify(encrypted), { qos: 1 });
+    }
+
+    // Apply rotation locally
+    const newKey = deriveKey(bump.new_seed, bump.new_epoch);
+    const newHash = hashRoom(bump.new_seed, bump.new_epoch);
+
+    for (const [hash, s] of this.channels) {
+      if (s.channel === channelName && !s.subchannel) {
+        this.client.unsubscribe([this.msgTopic(hash), this.presTopic(hash)]);
+        this.channels.delete(hash);
+        break;
+      }
+    }
+    this.channels.set(newHash, { channel: channelName, key: newKey, hash: newHash });
+    this.channelKeys.set(channelName, bump.new_seed);
+    this.client.subscribe([this.msgTopic(newHash), this.presTopic(newHash)], { qos: 1 });
+    updateChannelEpoch(channelName, bump.new_seed, bump.new_epoch);
+  }
+
+  async removeMember(channelName: string, targetFingerprint: string, opts?: { silent?: boolean; reason?: string }): Promise<void> {
+    if (!this.client) throw new Error("Not connected");
+
+    const meta = this.channelMeta.get(channelName);
+    if (!meta || !meta.owners.includes(this.identity.fingerprint)) {
+      throw new Error("Only channel owners can remove members");
+    }
+
+    const newSeed = randomBytes(32).toString("base64");
+    const newEpoch = getChannelEpoch(channelName) + 1;
+    const members = this.store.getMembers(channelName);
+    const remaining = members.filter((m) => m.fingerprint && m.fingerprint !== targetFingerprint);
+
+    await this.broadcastEpochBump(channelName, remaining, {
+      channel: channelName,
+      new_seed: newSeed,
+      new_epoch: newEpoch,
+      removed_fps: [targetFingerprint],
+    });
+
+    // Send removal_notice DM (unless --silent)
+    if (!opts?.silent) {
+      const noticePayload: RemovalNoticePayload = {
+        channel: channelName,
+        removed_at: Date.now(),
+        removed_by: this.identity.fingerprint,
+        reason: opts?.reason,
+      };
+      const noticeMsg: Message = {
+        id: randomBytes(8).toString("hex"),
+        channel: `dm:${[this.identity.fingerprint, targetFingerprint].sort().join(":")}`,
+        sender: this.name,
+        content: JSON.stringify(noticePayload),
+        timestamp: Date.now(),
+        type: "removal_notice",
+        senderKey: this.identity.fingerprint,
+      };
+      const dataToSign = JSON.stringify(noticeMsg);
+      noticeMsg.signature = signMessage(dataToSign, this.identity.privateKeyPem);
+
+      const key = deriveDmKey(this.identity.fingerprint, targetFingerprint);
+      const hash = hashDm(this.identity.fingerprint, targetFingerprint);
+      const encrypted = encrypt(JSON.stringify(noticeMsg), key);
+      this.client.publish(this.msgTopic(hash), JSON.stringify(encrypted), { qos: 1 });
+    }
+  }
+
+  async rotateChannel(channelName: string): Promise<void> {
+    if (!this.client) throw new Error("Not connected");
+
+    const meta = this.channelMeta.get(channelName);
+    if (!meta || !meta.owners.includes(this.identity.fingerprint)) {
+      throw new Error("Only channel owners can rotate channel keys");
+    }
+
+    const newSeed = randomBytes(32).toString("base64");
+    const newEpoch = getChannelEpoch(channelName) + 1;
+    const members = this.store.getMembers(channelName);
+
+    await this.broadcastEpochBump(channelName, members, {
+      channel: channelName,
+      new_seed: newSeed,
+      new_epoch: newEpoch,
+    });
+  }
+
+  // ── Retraction ──────────────────────────────────────
+
+  async retractMessage(messageId: string, channelName?: string, reason?: string): Promise<Message> {
+    if (!this.client) throw new Error("Not connected");
+
+    // Find the target message
+    const target = this.store.getMessageById(messageId);
+    if (!target) throw new Error(`Message "${messageId}" not found`);
+
+    // Verify ownership
+    if (target.senderKey !== this.identity.fingerprint) {
+      throw new Error("You can only retract your own messages");
+    }
+
+    // Verify 24h window
+    const age = Date.now() - target.timestamp;
+    if (age > 24 * 60 * 60 * 1000) {
+      throw new Error("Retraction window expired (24h limit)");
+    }
+
+    const retraction: RetractionPayload = {
+      target_id: messageId,
+      retracted_at: Date.now(),
+      reason,
+    };
+
+    const ch = channelName || target.channel;
+    const targetChannel = target.subchannel ? `${target.channel}/${target.subchannel}` : target.channel;
+
+    const msg: Message = {
+      id: randomBytes(8).toString("hex"),
+      channel: target.channel,
+      subchannel: target.subchannel,
+      sender: this.name,
+      content: JSON.stringify(retraction),
+      timestamp: Date.now(),
+      type: "retraction",
+      senderKey: this.identity.fingerprint,
+    };
+
+    const dataToSign = JSON.stringify(msg);
+    msg.signature = signMessage(dataToSign, this.identity.privateKeyPem);
+
+    // Find the channel state for encryption
+    let targetState: ChannelState | undefined;
+    for (const state of this.channels.values()) {
+      if (fullId(state) === targetChannel || state.channel === target.channel) {
+        targetState = state;
+        break;
+      }
+    }
+    if (!targetState) throw new Error(`Channel not found for retraction`);
+
+    const encrypted = encrypt(JSON.stringify(msg), targetState.key);
+
+    return new Promise((resolve, reject) => {
+      this.client!.publish(
+        this.msgTopic(targetState!.hash),
+        JSON.stringify(encrypted),
+        { qos: 1 },
+        (err) => {
+          if (err) reject(err);
+          else {
+            this.store.addRetraction(messageId);
+            resolve(msg);
+          }
+        }
+      );
     });
   }
 

@@ -29,7 +29,7 @@ export function registerInfoTool(server: McpServer, getClient: () => AgentChatCl
         text += `\n\nSubchannels:\n`;
         for (const sub of meta.subchannels) {
           const desc = meta.descriptions?.[sub] || "";
-          text += `- ##${sub}${desc ? " — " + desc : ""}\n`;
+          text += `- /${sub}${desc ? " — " + desc : ""}\n`;
         }
       }
       if (meta.readme) {

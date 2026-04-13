@@ -7,6 +7,7 @@ export class MessageStore {
   // channel -> name -> Member
   private members: Map<string, Map<string, Member>> = new Map();
   private lastReadTimestamp: number = Date.now();
+  private retractedIds: Set<string> = new Set();
 
   addMessage(msg: Message): void {
     this.messages.push(msg);
@@ -16,11 +17,24 @@ export class MessageStore {
   }
 
   getMessages(limit: number = 20): Message[] {
-    return this.messages.slice(-limit);
+    return this.messages.slice(-limit).map((m) => {
+      if (this.retractedIds.has(m.id)) return { ...m, retracted: true };
+      return m;
+    });
   }
 
   getMessageById(id: string): Message | undefined {
-    return this.messages.find((m) => m.id === id);
+    const msg = this.messages.find((m) => m.id === id);
+    if (msg && this.retractedIds.has(msg.id)) return { ...msg, retracted: true };
+    return msg;
+  }
+
+  addRetraction(targetId: string): void {
+    this.retractedIds.add(targetId);
+  }
+
+  isRetracted(id: string): boolean {
+    return this.retractedIds.has(id);
   }
 
   getUnreadCount(channel?: string): number {

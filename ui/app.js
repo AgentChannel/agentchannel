@@ -228,11 +228,11 @@ function chId(ch) {
 }
 
 function chLabel(ch) {
-  return ch.subchannel ? '##' + ch.subchannel : '#' + ch.channel;
+  return ch.subchannel ? '#' + ch.channel + '/' + ch.subchannel : '#' + ch.channel;
 }
 
 function chFullLabel(ch) {
-  return ch.subchannel ? '#' + ch.channel + ' ##' + ch.subchannel : '#' + ch.channel;
+  return ch.subchannel ? '#' + ch.channel + '/' + ch.subchannel : '#' + ch.channel;
 }
 
 var INLINE_TAG_COLORS = {
@@ -243,7 +243,7 @@ var INLINE_TAG_COLORS = {
 };
 
 // ---------------------------------------------------------------------------
-// Rich text rendering (markdown + @mentions + #channels + ##subchannels)
+// Rich text rendering (markdown + @mentions + #channels + /subchannels)
 // ---------------------------------------------------------------------------
 function richText(t) {
   // Let marked parse markdown (preserves code blocks with <pre><code>)
@@ -253,10 +253,10 @@ function richText(t) {
   var knownChannels = CONFIG.channels.filter(function(c) { return !c.subchannel; }).map(function(c) { return c.channel; });
   var knownSubs = CONFIG.channels.filter(function(c) { return c.subchannel; }).map(function(c) { return c.subchannel; });
 
-  // Replace ##subchannel references (do subs first to avoid # matching partial ##)
+  // Replace /subchannel references in message text
   for (var ki = 0; ki < knownSubs.length; ki++) {
-    s = s.split('##' + knownSubs[ki]).join(
-      '<span class="channel-tag" onclick="window.switchToSub(\'' + knownSubs[ki] + '\')">##' + knownSubs[ki] + '</span>'
+    s = s.split('/' + knownSubs[ki]).join(
+      '<span class="channel-tag" onclick="window.switchToSub(\'' + knownSubs[ki] + '\')">/' + knownSubs[ki] + '</span>'
     );
   }
   // Replace #channel references
@@ -352,7 +352,7 @@ function render() {
     var msgFp = msg.senderKey ? '(' + msg.senderKey.slice(0, 4) + ')' : '';
     html += '<span class="conversation__sender">' + esc(msg.sender) + '<span style="color:var(--text-muted);font-weight:400;font-size:0.65rem;margin-left:2px">' + msgFp + '</span></span>';
     if (activeChannel === "@me") {
-      var mlabel = msg.subchannel ? '#' + esc(msg.channel) + ' ##' + esc(msg.subchannel) : '#' + esc(msg.channel);
+      var mlabel = msg.subchannel ? '#' + esc(msg.channel) + '/' + esc(msg.subchannel) : '#' + esc(msg.channel);
       html += '<span class="conversation__channel">' + mlabel + '</span>';
     }
     html += '<span class="conversation__time">' + time + '</span>';
@@ -363,7 +363,11 @@ function render() {
     if (msg.tags && msg.tags.length) {
       html += '<div class="conversation__tags">' + msg.tags.map(function(t) { return '<span class="tag">[' + esc(t) + ']</span>'; }).join(' ') + '</div>';
     }
-    html += '<div class="conversation__text">' + richText(msg.content) + '</div>';
+    if (msg.retracted) {
+      html += '<div class="conversation__text retracted"><span class="retracted-label">retracted</span>' + richText(msg.content) + '</div>';
+    } else {
+      html += '<div class="conversation__text">' + richText(msg.content) + '</div>';
+    }
 
     lastSender = msg.sender;
     lastChannel = msg.channel;
@@ -383,6 +387,8 @@ function renderSidebar() {
   el.innerHTML = "";
   var lockIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
   var globeIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+  var syncOnIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M2.5 11.5a10 10 0 0 1 17.5-5.5M21.5 12.5a10 10 0 0 1-17.5 5.5"/></svg>';
+  var syncOffIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M2.5 11.5a10 10 0 0 1 17.5-5.5M21.5 12.5a10 10 0 0 1-17.5 5.5"/></svg>';
 
   // Sort channels alphabetically, group subchannels under parent
   var sorted = CONFIG.channels.slice().sort(function(a, b) { return chId(a).localeCompare(chId(b)); });
@@ -466,23 +472,33 @@ function renderSidebar() {
     var cid = chId(ch);
     div.className = "sidebar__channel" + (activeChannel === cid ? " active" : "");
     var count = unreadCounts[cid] || 0;
-    var chInfo = (window.acChannels || {})[cid];
-    var chHash = chInfo ? chInfo.hash : '';
-    var chTail = chHash ? '<span style="color:var(--text-muted);font-size:0.6rem;margin-left:3px;opacity:0.8">(' + chHash.slice(0, 4) + ')</span>' : '';
-    div.innerHTML = '<span style="color:var(--accent);margin-right:2px;opacity:0.7">#</span>' + esc(ch.channel) + chTail + '<span style="opacity:0.5;margin-left:4px;display:inline-flex">' + statusIcon + '</span>' + (count ? '<span class="badge">' + count + '</span>' : "");
-
+    var isSynced = ch.sync !== undefined ? ch.sync : !isOfficial;
+    // Left: # + name + lock (private only, public has no icon)
+    var leftPart = '<span style="display:flex;align-items:center;gap:2px;min-width:0;overflow:hidden">' +
+      '<span style="color:var(--accent);flex-shrink:0;opacity:0.7">#</span>' +
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ch.channel) + '</span>' +
+      (!isOfficial ? '<span style="opacity:0.35;flex-shrink:0;display:inline-flex;margin-left:2px">' + lockIcon + '</span>' : '') +
+      '</span>';
+    // Right: badge + sync + arrow (flex-end, icons only on hover except badge)
+    var rightPart = '<span class="sidebar__channel-actions" style="display:flex;align-items:center;gap:2px;margin-left:auto;flex-shrink:0">';
+    if (count) rightPart += '<span class="badge">' + count + '</span>';
+    rightPart += '<span class="sync-toggle" data-channel="' + esc(ch.channel) + '" data-synced="' + (isSynced ? '1' : '0') + '" title="' + (isSynced ? 'Sync ON' : 'Sync OFF') + '" style="cursor:pointer;display:inline-flex;padding:2px">' + (isSynced ? syncOnIcon : syncOffIcon) + '</span>';
     if (hasChildren) {
-      var arrowBtn = document.createElement("span");
-      arrowBtn.style.cssText = "font-size:0.55rem;margin-left:auto;opacity:0.4;padding:2px 4px;cursor:pointer";
-      arrowBtn.textContent = collapsed ? "\u25B6" : "\u25BC";
+      rightPart += '<span class="sidebar__arrow" data-ch="' + esc(ch.channel) + '" data-collapsed="' + (collapsed ? '1' : '0') + '" style="cursor:pointer;font-size:0.5rem;opacity:0.4;padding:2px 2px;display:inline-flex">' + (collapsed ? '\u25B6' : '\u25BC') + '</span>';
+    }
+    rightPart += '</span>';
+    div.innerHTML = leftPart + rightPart;
+
+    // Arrow click handler (delegated)
+    var arrowEl = div.querySelector('.sidebar__arrow');
+    if (arrowEl) {
       (function(chName, wasCollapsed) {
-        arrowBtn.onclick = function(e) {
+        arrowEl.onclick = function(e) {
           e.stopPropagation();
           collapsedGroups[chName] = !wasCollapsed;
           renderSidebar();
         };
       })(ch.channel, collapsed);
-      div.appendChild(arrowBtn);
     }
 
     (function(chObj, channelId) {
@@ -509,14 +525,14 @@ function renderSidebar() {
         var subDiv = document.createElement("div");
         subDiv.className = "sidebar__channel sub" + (activeChannel === subCid ? " active" : "");
         var subCount = unreadCounts[subCid] || 0;
-        subDiv.innerHTML = '<span style="color:var(--accent);margin-right:2px;opacity:0.5">##</span>' + esc(sub.subchannel) + (subCount ? '<span class="badge">' + subCount + '</span>' : "");
+        subDiv.innerHTML = '<span style="color:var(--accent);margin-right:2px;opacity:0.5">/</span>' + esc(sub.subchannel) + (subCount ? '<span class="badge">' + subCount + '</span>' : "");
         (function(subObj, parentChannel, subChannelId) {
           subDiv.onclick = function() {
             activeChannel = subChannelId;
             unreadCounts[subChannelId] = 0;
-            headerName.textContent = "##" + subObj.subchannel;
+            headerName.textContent = "#" + ch.channel + "/" + subObj.subchannel;
             var subDesc = (channelMetas[parentChannel] && channelMetas[parentChannel].descriptions && channelMetas[parentChannel].descriptions[subObj.subchannel]) || "";
-            headerDesc.textContent = "#" + parentChannel + (subDesc ? " \u00B7 " + subDesc : "");
+            headerDesc.textContent = subDesc;
             document.title = "AgentChannel";
             history.pushState(null, "", "/channel/" + encodeURIComponent(parentChannel) + "/sub/" + encodeURIComponent(subObj.subchannel));
             renderSidebar();
@@ -728,7 +744,7 @@ async function init() {
         }
         var total = Object.values(unreadCounts).reduce(function(a, b) { return a + b; }, 0);
         if (total > 0) document.title = "(" + total + ") AgentChannel";
-        var nlabel = msg.subchannel ? "#" + msg.channel + " ##" + msg.subchannel : "#" + msg.channel;
+        var nlabel = msg.subchannel ? "#" + msg.channel + "/" + msg.subchannel : "#" + msg.channel;
         if (Notification.permission === "granted" && (document.hidden || activeChannel !== chKeyName)) {
           var n = new Notification(nlabel + " @" + msg.sender, {body: msg.subject || msg.content.slice(0, 100)});
           n.onclick = function() { window.focus(); };
@@ -1050,7 +1066,7 @@ async function init() {
             }
             var total = Object.values(unreadCounts).reduce(function(a, b) { return a + b; }, 0);
             if (total > 0) document.title = "(" + total + ") AgentChannel";
-            var nlabel = ch.isDm ? "DM" : (ch.sub ? "#" + ch.name + " ##" + ch.sub : "#" + ch.name);
+            var nlabel = ch.isDm ? "DM" : (ch.sub ? "#" + ch.name + "/" + ch.sub : "#" + ch.name);
             if (!isTauri && Notification.permission === "granted" && (document.hidden || activeChannel !== chKeyName)) {
               var n = new Notification(nlabel + " @" + msg.sender, {body: msg.content});
               n.onclick = function() {
@@ -1092,9 +1108,9 @@ async function init() {
     var cid = parent.channel + "/" + subName;
     activeChannel = cid;
     unreadCounts[cid] = 0;
-    headerName.textContent = "##" + subName;
+    headerName.textContent = "#" + activeChannel.split("/")[0] + "/" + subName;
     var subDesc2 = (channelMetas[parent.channel] && channelMetas[parent.channel].descriptions && channelMetas[parent.channel].descriptions[subName]) || "";
-    headerDesc.textContent = "#" + parent.channel + (subDesc2 ? " \u00B7 " + subDesc2 : "");
+    headerDesc.textContent = subDesc2;
     document.title = "AgentChannel";
     history.pushState(null, "", "/channel/" + encodeURIComponent(parent.channel) + "/sub/" + encodeURIComponent(subName));
     renderSidebar();
@@ -1207,33 +1223,160 @@ function toggleTheme() {
 }
 window.toggleTheme = toggleTheme;
 
-// Settings modal
+// Settings modal — tabbed layout
 function openSettings() {
   var fp = CONFIG.fingerprint || '';
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
   overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
-  overlay.innerHTML = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:24px;width:360px;max-width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)">' +
-    '<h3 style="margin-bottom:16px;font-size:1rem;color:var(--text)">Settings</h3>' +
-    '<label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px">Display Name</label>' +
-    '<input id="settings-name" value="' + (CONFIG.name || '') + '" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg-alt);color:var(--text);margin-bottom:16px;outline:none">' +
-    '<label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px">Fingerprint</label>' +
-    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">' +
-    '<code style="flex:1;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:6px;font-size:0.8rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis">' + fp + '</code>' +
-    '<button onclick="navigator.clipboard.writeText(\'' + fp + '\');this.textContent=\'Copied!\';setTimeout(function(){this.textContent=\'Copy\'},1000)" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);color:var(--text);cursor:pointer;font-size:0.75rem;white-space:nowrap">Copy</button>' +
+
+  var sub = 'font-size:0.7rem;color:var(--text-secondary);margin-top:6px;line-height:1.5';
+  var row = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)';
+  var rowLast = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0';
+  var rl = 'font-size:0.82rem;color:var(--text)';
+  var pathStyle = 'flex:1;font-size:0.78rem;color:var(--text-body);padding:8px 12px;background:var(--bg-alt);border-radius:6px;border:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  var folderIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:block"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+  var folderBtn = 'display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);color:var(--text-secondary);cursor:pointer;flex-shrink:0';
+  // Switch toggle registry — handlers bound after tab render
+  var switchDefs = {};
+  function sw(id, checked, handler, onLabel, offLabel) {
+    var on = onLabel || 'On';
+    var off = offLabel || 'Off';
+    switchDefs[id] = { handler: handler, on: on, off: off };
+    var stateText = '<span id="' + id + '-label" style="font-size:0.7rem;color:var(--text-secondary);margin-right:6px">' + (checked ? on : off) + '</span>';
+    return '<div style="display:flex;align-items:center">' + stateText +
+      '<label class="switch"><input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') +
+      '><span class="slider"></span></label></div>';
+  }
+  function bindSwitches() {
+    for (var sid in switchDefs) {
+      var el = document.getElementById(sid);
+      if (!el || el._bound) continue;
+      el._bound = true;
+      (function(def, input) {
+        input.addEventListener('change', function() {
+          def.handler(input.checked);
+          var lbl = document.getElementById(input.id + '-label');
+          if (lbl) lbl.textContent = input.checked ? def.on : def.off;
+        });
+      })(switchDefs[sid], el);
+    }
+  }
+
+  // Tab content definitions
+  var tabs = {
+    Profile:
+      '<div style="margin-bottom:18px">' +
+      '<div style="font-size:0.7rem;color:var(--text-secondary);margin-bottom:5px">Display Name</div>' +
+      '<input id="settings-name" value="' + (CONFIG.name || '') + '" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;background:var(--bg-alt);color:var(--text);outline:none">' +
+      '</div>' +
+      '<div>' +
+      '<div style="font-size:0.7rem;color:var(--text-secondary);margin-bottom:5px">Fingerprint</div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+      '<code style="flex:1;padding:8px 10px;background:var(--bg-alt);border:1px solid var(--border);border-radius:6px;font-size:0.82rem;color:var(--text);overflow:hidden;text-overflow:ellipsis">' + fp + '</code>' +
+      '<button onclick="navigator.clipboard.writeText(\'' + fp + '\');this.textContent=\'Copied!\';setTimeout(function(){this.textContent=\'Copy\'},1000)" style="padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);color:var(--text);cursor:pointer;font-size:0.75rem;white-space:nowrap">Copy</button>' +
+      '</div>' +
+      '<div style="' + sub + '">Share this so others can reach you directly</div>' +
+      '</div>',
+
+    Sync:
+      '<div style="' + row + '">' +
+      '<span style="' + rl + '">Private channels</span>' +
+      sw('settings-sync-private', CONFIG.syncPrivate !== false, window.toggleSyncPrivate, 'Sync on', 'Sync off') +
+      '</div>' +
+      '<div style="' + rowLast + '">' +
+      '<span style="' + rl + '">Public channels</span>' +
+      sw('settings-sync-public', !!CONFIG.syncPublic, window.toggleSyncPublic, 'Sync on', 'Sync off') +
+      '</div>' +
+      '<div style="font-size:0.65rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-top:14px;margin-bottom:5px">Sync folder</div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+      '<div style="' + pathStyle + '">~/agentchannel/messages/</div>' +
+      '<button onclick="window.openSyncFolder(event)" style="' + folderBtn + '" title="Open folder">' + folderIcon + '</button>' +
+      '</div>' +
+      '<div style="' + sub + '">Toggle per-channel in the sidebar.</div>',
+
+    Brain:
+      '<div style="' + rowLast + '">' +
+      '<span style="' + rl + '">Brain</span>' +
+      sw('settings-distill', CONFIG.distill !== false, window.toggleDistill, 'Learning', 'Paused') +
+      '</div>' +
+      '<div style="font-size:0.65rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-top:14px;margin-bottom:5px">Brain folder</div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+      '<div id="brain-path" style="' + pathStyle + '">~/agentchannel/brain/</div>' +
+      '<button onclick="window.openBrainFolder(event)" style="' + folderBtn + '" title="Open folder">' + folderIcon + '</button>' +
+      '</div>' +
+      '<div id="brain-activity" style="margin-top:12px;padding:10px 12px;background:var(--bg-alt);border-radius:6px;border:1px solid var(--border);font-size:0.75rem;color:var(--text-body);line-height:1.6">' +
+      '<div style="color:var(--text-secondary);font-size:0.65rem;margin-bottom:4px">ACTIVITY</div>' +
+      '<div>Preparing...</div>' +
+      '</div>',
+
+    Security:
+      '<div style="' + row + '">' +
+      '<span style="' + rl + '">End-to-end encryption</span>' +
+      '<span style="font-size:0.72rem;color:var(--accent-brand)">Active</span>' +
+      '</div>' +
+      '<div style="' + row + '">' +
+      '<span style="' + rl + '">Message signing</span>' +
+      '<span style="font-size:0.72rem;color:var(--accent-brand)">Active</span>' +
+      '</div>' +
+      '<div style="' + rowLast + '">' +
+      '<span style="' + rl + '">Private key</span>' +
+      '<span style="font-size:0.72rem;color:var(--text-secondary)">Local only</span>' +
+      '</div>' +
+      '<div style="' + sub + '">No one — not even the server — can read your messages. Every message is signed so you know who sent it.</div>'
+  };
+
+  var tabNames = ['Profile', 'Sync', 'Brain', 'Security'];
+  var tabBtnStyle = 'padding:6px 14px 8px;border:none;border-bottom:2px solid transparent;border-radius:0;cursor:pointer;font-size:0.78rem;transition:all 0.1s;background:transparent';
+  var tabBtnActive = 'color:var(--text);border-bottom-color:var(--accent-brand)';
+  var tabBtnInactive = 'color:var(--text-secondary);border-bottom-color:transparent';
+
+  overlay.innerHTML = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;width:440px;max-width:92%;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden">' +
+    // Header
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0">' +
+    '<h3 style="font-size:1rem;color:var(--text);margin:0">Settings</h3>' +
+    '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1rem;padding:4px;line-height:1">&times;</button>' +
     '</div>' +
-    '<label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px">Version</label>' +
-    '<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px">v' + (CONFIG.version || '?') + '</div>' +
-    '<div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px;font-size:0.7rem;color:var(--text-muted);line-height:1.6">' +
-    '<div style="margin-bottom:4px">&#128274; Messages are end-to-end encrypted (AES-256-GCM)</div>' +
-    '<div style="margin-bottom:4px">&#128273; Your private key never leaves this device</div>' +
-    '<div>&#128206; Fingerprint = your public identity (safe to share)</div>' +
+    // Tabs
+    '<div id="settings-tabs" style="display:flex;gap:4px;padding:12px 20px 0">' +
+    tabNames.map(function(name, i) {
+      return '<button class="settings-tab" data-tab="' + name + '" style="' + tabBtnStyle + ';' + (i === 0 ? tabBtnActive : tabBtnInactive) + '">' + name + '</button>';
+    }).join('') +
     '</div>' +
-    '<div style="display:flex;gap:8px;justify-content:flex-end">' +
-    '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);color:var(--text);cursor:pointer;font-size:0.8rem">Cancel</button>' +
-    '<button onclick="saveName()" style="padding:8px 16px;border:none;border-radius:6px;background:#1a1a1a;color:#fff;cursor:pointer;font-size:0.8rem;font-weight:600">Save</button>' +
+    // Content
+    '<div id="settings-content" style="padding:16px 20px 20px;height:220px;overflow-y:auto">' + tabs.Profile + '</div>' +
+    // Footer
+    '<div style="border-top:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;justify-content:space-between">' +
+    '<span style="font-size:0.72rem;color:var(--text-secondary)">v' + (CONFIG.version || '?') + '</span>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:7px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);color:var(--text);cursor:pointer;font-size:0.78rem">Cancel</button>' +
+    '<button onclick="saveName()" style="padding:7px 14px;border:none;border-radius:6px;background:var(--text);color:var(--bg);cursor:pointer;font-size:0.78rem;font-weight:600">Save</button>' +
+    '</div>' +
     '</div></div>';
+
   document.body.appendChild(overlay);
+  bindSwitches();
+
+  // Tab switching
+  var tabButtons = overlay.querySelectorAll('.settings-tab');
+  var contentEl = overlay.querySelector('#settings-content');
+  for (var ti = 0; ti < tabButtons.length; ti++) {
+    tabButtons[ti].onclick = function(e) {
+      e.stopPropagation();
+      var name = this.getAttribute('data-tab');
+      contentEl.innerHTML = tabs[name];
+      bindSwitches();
+      for (var j = 0; j < tabButtons.length; j++) {
+        tabButtons[j].style.color = 'var(--text-secondary)';
+        tabButtons[j].style.borderBottomColor = 'transparent';
+      }
+      this.style.color = 'var(--text)';
+      this.style.borderBottomColor = 'var(--accent-brand)';
+      if (name === 'Brain' && window.loadDistillStatus) window.loadDistillStatus();
+    };
+  }
+
+  if (window.loadDistillStatus) window.loadDistillStatus();
 }
 window.openSettings = openSettings;
 
@@ -1262,6 +1405,135 @@ function saveName() {
   });
 }
 window.saveName = saveName;
+
+// ── Distill toggle ───────────────────────────────────────
+
+// ── Sync toggle (click handler on sidebar icons) ─────────
+
+document.addEventListener('click', function(e) {
+  var toggle = e.target.closest('.sync-toggle');
+  if (!toggle) return;
+  e.stopPropagation();
+  var channel = toggle.getAttribute('data-channel');
+  var wasSynced = toggle.getAttribute('data-synced') === '1';
+  var nowSynced = !wasSynced;
+  fetch('/api/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel: channel, enabled: nowSynced })
+  }).then(function() {
+    // Update local config
+    for (var i = 0; i < CONFIG.channels.length; i++) {
+      if (CONFIG.channels[i].channel === channel && !CONFIG.channels[i].subchannel) {
+        CONFIG.channels[i].sync = nowSynced;
+      }
+    }
+    renderSidebar();
+  });
+});
+
+window.toggleDistill = function(enabled) {
+  fetch('/api/distill', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: enabled })
+  });
+};
+
+window.toggleSyncPrivate = function(enabled) {
+  CONFIG.syncPrivate = enabled;
+  for (var i = 0; i < CONFIG.channels.length; i++) {
+    var ch = CONFIG.channels[i];
+    if (ch.channel.toLowerCase() !== 'agentchannel' && !ch.subchannel) {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: ch.channel, enabled: enabled })
+      });
+    }
+  }
+  renderSidebar();
+};
+
+window.toggleSyncPublic = function(enabled) {
+  // Toggle sync default for all public channels
+  CONFIG.syncPublic = enabled;
+  var official = 'agentchannel';
+  for (var i = 0; i < CONFIG.channels.length; i++) {
+    var ch = CONFIG.channels[i];
+    if (ch.channel.toLowerCase() === official && !ch.subchannel) {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: ch.channel, enabled: enabled })
+      });
+    }
+  }
+  renderSidebar();
+};
+
+function openFolder(path, btnEvent) {
+  var btn = btnEvent && btnEvent.target ? btnEvent.target.closest('button') : null;
+  if (window.__TAURI__) {
+    window.__TAURI__.shell.open(path);
+  } else {
+    navigator.clipboard.writeText(path);
+    if (btn) {
+      var orig = btn.innerHTML;
+      btn.innerHTML = 'Copied!';
+      btn.style.color = 'var(--accent-brand)';
+      setTimeout(function() { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+    }
+  }
+}
+
+window.openSyncFolder = function(e) {
+  openFolder(CONFIG.syncPath || (window.HOME || '') + '/agentchannel/messages', e || window.event);
+};
+
+window.openBrainFolder = function(e) {
+  openFolder(CONFIG.brainPath || (window.HOME || '') + '/agentchannel/brain', e || window.event);
+};
+
+// Load distill status into settings
+window.loadDistillStatus = function() {
+  fetch('/api/distill-status').then(function(r) { return r.json(); }).then(function(status) {
+    var el = document.getElementById('brain-path');
+    if (el) {
+      el.textContent = status.brainDir || '~/agentchannel/brain/';
+    }
+    var actEl = document.getElementById('brain-activity');
+    if (actEl) {
+      var tc = status.topicCount || 0;
+      var chList = status.channelsProcessed || [];
+      var lastRun = status.lastRun ? timeAgo(status.lastRun) : null;
+      var header = '<div style="color:var(--text-secondary);font-size:0.65rem;margin-bottom:4px">ACTIVITY</div>';
+
+      if (tc === 0 && !lastRun) {
+        actEl.innerHTML = header + '<div style="color:var(--text-secondary)">Waiting for first messages to arrive...</div>';
+      } else {
+        var topicLabel = tc === 1 ? '1 topic' : tc + ' topics';
+        var chLabel = chList.length === 1 ? '1 channel' : chList.length + ' channels';
+        var lines = '<div><span style="color:var(--text);font-weight:600">' + topicLabel + '</span> learned from <span style="color:var(--text);font-weight:600">' + chLabel + '</span></div>';
+        if (chList.length > 0) {
+          lines += '<div style="margin-top:3px;color:var(--text-secondary)">' + chList.map(function(c) { return '#' + c; }).join(', ') + '</div>';
+        }
+        if (lastRun) {
+          lines += '<div style="margin-top:3px;color:var(--text-secondary)">Last updated ' + lastRun + '</div>';
+        }
+        actEl.innerHTML = header + lines;
+      }
+    }
+  }).catch(function() {});
+};
+
+function timeAgo(ts) {
+  var diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'min ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
 
 // ── Input: send message + @autocomplete ──────────────────
 

@@ -10,7 +10,7 @@ export function registerReadTool(server: McpServer, getClient: () => AgentChatCl
     "read_messages",
     {
       title: "Read Messages",
-      description: "Read recent messages from #channels or ##subchannels. Use preview=true to get a compact list (saves tokens), then get_message to read full content.",
+      description: "Read recent messages from #channels or /subchannels. Use preview=true to get a compact list (saves tokens), then get_message to read full content.",
       inputSchema: {
         limit: z.number().optional().default(20).describe("Number of recent messages to return (default 20, max 100)"),
         channel: z.string().optional().describe("Filter by channel name"),
@@ -51,8 +51,10 @@ export function registerReadTool(server: McpServer, getClient: () => AgentChatCl
           const mention = m.content.includes(`@${myName}`) ? " ⚠️[MENTION]" : "";
           if (m.type === "system") return `[${time}] ${m.content}`;
 
-          const label = m.subchannel ? `#${m.channel} ##${m.subchannel}` : `#${m.channel}`;
+          const label = m.subchannel ? `#${m.channel}/${m.subchannel}` : `#${m.channel}`;
           const fp = m.senderKey ? `:${m.senderKey.slice(0, 4)}` : "";
+
+          const retracted = m.retracted ? " ~~RETRACTED~~" : "";
 
           if (preview) {
             const subj = m.subject || "";
@@ -60,11 +62,11 @@ export function registerReadTool(server: McpServer, getClient: () => AgentChatCl
             const bodyShort = body.length > 60 ? body.slice(0, 60) + "..." : body;
             const line = subj ? `${subj} — ${bodyShort}` : bodyShort;
             const tagStr = m.tags?.length ? ` [${m.tags.join(",")}]` : "";
-            return `[${m.id}] [${time}] ${label} | @${m.sender}${fp}:${tagStr} ${line}${mention}`;
+            return `[${m.id}] [${time}] ${label} | @${m.sender}${fp}:${tagStr} ${line}${mention}${retracted}`;
           }
 
           const trust = m.trustLevel ? ` [${m.trustLevel.toUpperCase()}]` : "";
-          return `[${time}] ${label} | @${m.sender}${fp}${trust}: ${m.content}${mention}`;
+          return `[${time}] ${label} | @${m.sender}${fp}${trust}: ${m.content}${mention}${retracted}`;
         })
         .join("\n");
 

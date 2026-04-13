@@ -11,6 +11,15 @@ export { ensureIdentity } from "./identity.js";
 const CONFIG_DIR = join(homedir(), ".agentchannel");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
+export interface DistillConfig {
+  enabled: boolean;           // default true
+  endpoint?: string;          // OpenAI-compatible API endpoint
+  apiKey?: string;            // API key (or use env DISTILL_API_KEY)
+  model?: string;             // model name (user's choice)
+  baseUrl?: string;           // for ollama etc
+  brainPath?: string;         // custom brain directory (default: ~/agentchannel/brain)
+}
+
 export interface AppConfig {
   name: string;
   channels: ChannelConfig[];
@@ -18,6 +27,7 @@ export interface AppConfig {
   permissions: Record<string, string[]>;
   webhooks?: WebhookConfig[];
   handoffs?: HandoffConfig[];
+  distill?: DistillConfig;
 }
 
 const OFFICIAL_KEY = "agentchannel-public-2026";
@@ -45,14 +55,14 @@ function migrateChannel(ch: { channel: string; subchannel?: string; key: string 
   return ch;
 }
 
-// Display label: #channel or ##subchannel
+// Display label: #channel or #channel/subchannel
 export function channelLabel(ch: { channel: string; subchannel?: string }): string {
-  return ch.subchannel ? `##${ch.subchannel}` : `#${ch.channel}`;
+  return ch.subchannel ? `#${ch.channel}/${ch.subchannel}` : `#${ch.channel}`;
 }
 
-// Full display: #channel ##subchannel
+// Full display: #channel/subchannel
 export function channelFullLabel(ch: { channel: string; subchannel?: string }): string {
-  return ch.subchannel ? `#${ch.channel} ##${ch.subchannel}` : `#${ch.channel}`;
+  return ch.subchannel ? `#${ch.channel}/${ch.subchannel}` : `#${ch.channel}`;
 }
 
 // Unique identifier for a channel/subchannel combo
@@ -145,6 +155,59 @@ export function unmuteChannel(channel: string): void {
 export function isMuted(channel: string): boolean {
   const config = loadConfig();
   return config.muted.includes(channel);
+}
+
+// ── Sync toggle ──────────────────────────────────────────
+
+export function getSyncEnabled(channel: string, subchannel?: string): boolean {
+  const config = loadConfig();
+  const ch = config.channels.find((c) => c.channel === channel && c.subchannel === subchannel);
+  if (!ch) return false;
+  if (ch.sync !== undefined) return ch.sync;
+  // Default: private channels sync ON, public channels sync OFF
+  // For now treat all channels as private (sync ON) — public detection requires meta
+  return true;
+}
+
+export function setSyncEnabled(channel: string, enabled: boolean, subchannel?: string): void {
+  const config = loadConfig();
+  const ch = config.channels.find((c) => c.channel === channel && c.subchannel === subchannel);
+  if (ch) {
+    ch.sync = enabled;
+    saveConfig(config);
+  }
+}
+
+// ── Epoch management ─────────────────────────────────────
+
+export function getChannelEpoch(channel: string): number {
+  const config = loadConfig();
+  const ch = config.channels.find((c) => c.channel === channel && !c.subchannel);
+  return ch?.epoch ?? 0;
+}
+
+export function getDistillConfig(): DistillConfig {
+  const config = loadConfig();
+  return config.distill ?? { enabled: true };
+}
+
+export function setDistillEnabled(enabled: boolean): void {
+  const config = loadConfig();
+  if (!config.distill) config.distill = { enabled };
+  else config.distill.enabled = enabled;
+  saveConfig(config);
+}
+
+export function updateChannelEpoch(channel: string, newKey: string, newEpoch: number): void {
+  const config = loadConfig();
+  // Update main channel + all its subchannels
+  for (const ch of config.channels) {
+    if (ch.channel === channel) {
+      ch.key = newKey;
+      ch.epoch = newEpoch;
+    }
+  }
+  saveConfig(config);
 }
 
 export function getPermissions(user: string): string[] {

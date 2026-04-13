@@ -14,6 +14,9 @@ import { registerInfoTool } from "./info.js";
 import { registerDmTool } from "./dm.js";
 import { registerRegistryTools } from "./registry.js";
 import { registerHookTools } from "./hooks.js";
+import { registerBrainTools } from "./brain.js";
+import { registerRetractTool } from "./retract.js";
+import { registerKickTools } from "./kick.js";
 
 export function registerAllTools(server: McpServer, getClient: () => AgentChatClient) {
   registerSendTool(server, getClient);
@@ -30,4 +33,7 @@ export function registerAllTools(server: McpServer, getClient: () => AgentChatCl
   registerDmTool(server, getClient);
   registerRegistryTools(server, getClient);
   registerHookTools(server);
+  registerBrainTools(server);
+  registerRetractTool(server, getClient);
+  registerKickTools(server, getClient);
 }

@@ -7,7 +7,7 @@ export function registerChannelTools(server: McpServer, getClient: () => AgentCh
     "join_channel",
     {
       title: "Join Channel",
-      description: "Join a new #channel or ##subchannel dynamically without restarting.",
+      description: "Join a new #channel or /subchannel dynamically without restarting.",
       inputSchema: {
         channel: z.string().describe("Channel name to join"),
         key: z.string().describe("Channel key for encryption"),
@@ -17,7 +17,7 @@ export function registerChannelTools(server: McpServer, getClient: () => AgentCh
     async ({ channel, key, subchannel }) => {
       const client = getClient();
       await client.joinChannel({ channel, subchannel, key });
-      const label = subchannel ? `#${channel} ##${subchannel}` : `#${channel}`;
+      const label = subchannel ? `#${channel}/${subchannel}` : `#${channel}`;
       return {
         content: [{ type: "text" as const, text: `Joined ${label}` }],
       };
@@ -28,7 +28,7 @@ export function registerChannelTools(server: McpServer, getClient: () => AgentCh
     "leave_channel",
     {
       title: "Leave Channel",
-      description: "Leave a #channel or ##subchannel.",
+      description: "Leave a #channel or /subchannel.",
       inputSchema: {
         channel: z.string().describe("Channel name to leave"),
         subchannel: z.string().optional().describe("Subchannel name to leave"),
@@ -38,7 +38,7 @@ export function registerChannelTools(server: McpServer, getClient: () => AgentCh
       const client = getClient();
       const target = subchannel ? `${channel}/${subchannel}` : channel;
       client.leaveChannel(target);
-      const label = subchannel ? `#${channel} ##${subchannel}` : `#${channel}`;
+      const label = subchannel ? `#${channel}/${subchannel}` : `#${channel}`;
       return {
         content: [{ type: "text" as const, text: `Left ${label}` }],
       };
@@ -49,7 +49,7 @@ export function registerChannelTools(server: McpServer, getClient: () => AgentCh
     "list_channels",
     {
       title: "List Channels",
-      description: "List all #channels and ##subchannels you are currently in.",
+      description: "List all #channels and /subchannels you are currently in.",
     },
     async () => {
       const client = getClient();
@@ -58,7 +58,7 @@ export function registerChannelTools(server: McpServer, getClient: () => AgentCh
         return { content: [{ type: "text" as const, text: "Not in any channels." }] };
       }
       const formatted = channels
-        .map((c) => c.subchannel ? `#${c.channel} ##${c.subchannel}` : `#${c.channel}`)
+        .map((c) => c.subchannel ? `#${c.channel}/${c.subchannel}` : `#${c.channel}`)
         .join("\n");
       return {
         content: [{ type: "text" as const, text: `Channels:\n${formatted}` }],

@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { startServer } from "./server.js";
 import { AgentChatClient } from "./mqtt-client.js";
-import { loadConfig, saveConfig, addChannel, removeChannel, setName as setConfigName, getChannelKey, muteChannel, unmuteChannel, isMuted, channelLabel, channelFullLabel, channelId, ensureIdentity } from "./config.js";
+import { loadConfig, saveConfig, addChannel, removeChannel, setName as setConfigName, getChannelKey, muteChannel, unmuteChannel, isMuted, channelLabel, channelFullLabel, channelId, ensureIdentity, getSyncEnabled, setSyncEnabled, setDistillEnabled } from "./config.js";
+import { runDistillOnce, runDistillWatch, getDistillStatus } from "./distill.js";
+import { getBrainDir } from "./brain.js";
 import { startWebUI } from "./web.js";
 import type { Message, ChannelConfig } from "./types.js";
 
@@ -103,7 +105,7 @@ program
       });
       await client.disconnect();
 
-      console.log(`\nSubchannel created!\n  Channel: #${channel}\n  Subchannel: ##${sub}\n  Key: derived from #${channel}\n`);
+      console.log(`\nSubchannel created!\n  Channel: #${channel}/${sub}\n  Key: derived from #${channel}\n`);
       return;
     }
 
@@ -182,7 +184,7 @@ program
         channel = data.channel;
         key = data.key;
         sub = data.subchannel || sub;
-        console.log(`Invite redeemed for #${channel}${sub ? ` ##${sub}` : ""}`);
+        console.log(`Invite redeemed for #${channel}${sub ? `/${sub}` : ""}`);
       } catch {
         console.error("Error: Failed to redeem invite token.");
         process.exit(1);
@@ -217,7 +219,7 @@ program
         if (meta && meta.subchannels && meta.subchannels.length > 0) {
           for (const s of meta.subchannels) {
             addChannel(channel, key, s);
-            console.log(`  Auto-joined ##${s}`);
+            console.log(`  Auto-joined #${channel}/${s}`);
           }
         }
         await client.disconnect();
@@ -258,6 +260,191 @@ program
   .action((opts) => {
     unmuteChannel(opts.channel);
     console.log(`Unmuted #${opts.channel}.`);
+  });
+
+// ── sync ────────────────────────────────────────────────
+
+program
+  .command("sync")
+  .description("Toggle local message sync for a channel")
+  .option("--channel <name>", "Channel name")
+  .option("--on", "Enable sync")
+  .option("--off", "Disable sync")
+  .option("--status", "Show sync status for all channels")
+  .action((opts) => {
+    if (opts.status || (!opts.channel && !opts.on && !opts.off)) {
+      const config = loadConfig();
+      console.log("\n  Sync status:");
+      const seen = new Set<string>();
+      for (const ch of config.channels) {
+        const id = ch.subchannel ? `${ch.channel}/${ch.subchannel}` : ch.channel;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const enabled = getSyncEnabled(ch.channel, ch.subchannel);
+        const label = channelFullLabel(ch);
+        console.log(`    ${label}: ${enabled ? "ON" : "OFF"}`);
+      }
+      console.log();
+      return;
+    }
+    if (!opts.channel) {
+      console.error("Error: --channel is required when toggling sync.");
+      process.exit(1);
+    }
+    if (opts.on) {
+      setSyncEnabled(opts.channel, true);
+      console.log(`Sync enabled for #${opts.channel}. Messages will be saved to ~/.agentchannel/messages/`);
+    } else if (opts.off) {
+      setSyncEnabled(opts.channel, false);
+      console.log(`Sync disabled for #${opts.channel}.`);
+    } else {
+      const enabled = getSyncEnabled(opts.channel);
+      console.log(`#${opts.channel} sync: ${enabled ? "ON" : "OFF"}`);
+    }
+  });
+
+// ── remove ──────────────────────────────────────────────
+
+program
+  .command("remove")
+  .description("Remove a member from a channel via cryptographic epoch rotation")
+  .requiredOption("--channel <name>", "Channel name")
+  .requiredOption("--fingerprint <fp>", "Fingerprint of the member to remove")
+  .option("--silent", "Do not notify the removed member")
+  .option("--reason <text>", "Reason for removal")
+  .action(async (opts) => {
+    const config = loadConfig();
+    const key = getChannelKey(opts.channel);
+    if (!key) {
+      console.error(`Error: Not in #${opts.channel}. Join it first.`);
+      process.exit(1);
+    }
+    const client = AgentChatClient.fromSingle({
+      channel: opts.channel,
+      name: config.name,
+      key,
+    });
+    await client.connect();
+    try {
+      await client.removeMember(opts.channel, opts.fingerprint, {
+        silent: opts.silent,
+        reason: opts.reason,
+      });
+      console.log(`Removed ${opts.fingerprint} from #${opts.channel}. Channel key rotated.`);
+      if (!opts.silent) console.log("Removal notification sent.");
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+    await client.disconnect();
+    process.exit(0);
+  });
+
+program
+  .command("rotate")
+  .description("Manually rotate channel encryption key (compliance / suspected leak)")
+  .requiredOption("--channel <name>", "Channel name")
+  .action(async (opts) => {
+    const config = loadConfig();
+    const key = getChannelKey(opts.channel);
+    if (!key) {
+      console.error(`Error: Not in #${opts.channel}.`);
+      process.exit(1);
+    }
+    const client = AgentChatClient.fromSingle({
+      channel: opts.channel,
+      name: config.name,
+      key,
+    });
+    await client.connect();
+    try {
+      await client.rotateChannel(opts.channel);
+      console.log(`Channel #${opts.channel} key rotated. All members will resubscribe automatically.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+    await client.disconnect();
+    process.exit(0);
+  });
+
+// ── retract ─────────────────────────────────────────────
+
+program
+  .command("retract")
+  .description("Retract (delete) one of your own messages within 24 hours")
+  .requiredOption("--channel <name>", "Channel name")
+  .requiredOption("--message <id>", "Message ID to retract")
+  .option("--reason <text>", "Reason for retraction")
+  .action(async (opts) => {
+    const config = loadConfig();
+    const key = getChannelKey(opts.channel);
+    if (!key) {
+      console.error(`Error: Not in #${opts.channel}. Join it first.`);
+      process.exit(1);
+    }
+    const client = AgentChatClient.fromSingle({
+      channel: opts.channel,
+      name: config.name,
+      key,
+      silent: true,
+    });
+    await client.connect();
+    try {
+      await client.retractMessage(opts.message, opts.channel, opts.reason);
+      console.log(`Retracted message ${opts.message}. Others will see it struck through.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+    await client.disconnect();
+    process.exit(0);
+  });
+
+// ── distill ─────────────────────────────────────────────
+
+program
+  .command("distill")
+  .description("Distill channel messages into brain (local knowledge base)")
+  .option("--once", "Run a single distill pass and exit")
+  .option("--watch", "Run as a continuous daemon")
+  .option("--on", "Enable automatic distill")
+  .option("--off", "Disable automatic distill")
+  .option("--status", "Show distill and brain status")
+  .action(async (opts) => {
+    if (opts.on) {
+      setDistillEnabled(true);
+      console.log("Distill enabled. Brain will be built automatically when MCP server runs.");
+      return;
+    }
+    if (opts.off) {
+      setDistillEnabled(false);
+      console.log("Distill disabled. Messages will still sync but brain will not be updated.");
+      return;
+    }
+    if (opts.status) {
+      const status = getDistillStatus();
+      const lastRun = status.lastRun ? new Date(status.lastRun).toLocaleString() : "never";
+      console.log(`\n  Distill: ${status.enabled ? "ON" : "OFF"}`);
+      console.log(`  Brain:   ${status.brainDir}`);
+      console.log(`  Topics: ${status.topicCount}`);
+      console.log(`  Channels: ${status.channelsProcessed.join(", ") || "none"}`);
+      console.log(`  Last run: ${lastRun}\n`);
+      return;
+    }
+    if (opts.watch) {
+      await runDistillWatch();
+      return;
+    }
+    // Default: --once
+    try {
+      const result = await runDistillOnce();
+      console.log(`Distilled ${result.topics} topics from ${result.channels} channels.`);
+      console.log(`Brain: ${getBrainDir()}`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
   });
 
 // ── serve ───────────────────────────────────────────────
@@ -343,7 +530,7 @@ program
       const isSystem = msg.type === "system";
       const muted = isMuted(msg.channel);
 
-      const label = msg.subchannel ? `#${msg.channel} ##${msg.subchannel}` : `#${msg.channel}`;
+      const label = msg.subchannel ? `#${msg.channel}/${msg.subchannel}` : `#${msg.channel}`;
       const fp = msg.senderKey ? `:${msg.senderKey.slice(0, 4)}` : "";
 
       if (isSystem) {
@@ -456,7 +643,7 @@ program
     } else {
       for (const msg of messages) {
         const time = new Date(msg.timestamp).toLocaleTimeString();
-        const label = msg.subchannel ? `#${msg.channel} ##${msg.subchannel}` : `#${msg.channel}`;
+        const label = msg.subchannel ? `#${msg.channel}/${msg.subchannel}` : `#${msg.channel}`;
         const fp = msg.senderKey ? `:${msg.senderKey.slice(0, 4)}` : "";
         const isMention = msg.content.includes(`@${config.name}`);
         if (isMention) {

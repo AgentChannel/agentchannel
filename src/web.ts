@@ -135,6 +135,55 @@ export function startWebUI(config: { name: string; channels: { channel: string; 
       return;
     }
 
+    // Sync & Distill settings
+    if (pathname === "/api/sync" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", async () => {
+        try {
+          const { channel, enabled } = JSON.parse(body);
+          const { setSyncEnabled } = await import("./config.js");
+          setSyncEnabled(channel, enabled);
+          res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: true, channel, sync: enabled }));
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid request" }));
+        }
+      });
+      return;
+    }
+
+    if (pathname === "/api/distill" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", async () => {
+        try {
+          const { enabled } = JSON.parse(body);
+          const { setDistillEnabled } = await import("./config.js");
+          setDistillEnabled(enabled);
+          res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: true, distill: enabled }));
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid request" }));
+        }
+      });
+      return;
+    }
+
+    if (pathname === "/api/distill-status") {
+      import("./distill.js").then(({ getDistillStatus }) => {
+        const status = getDistillStatus();
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify(status));
+      }).catch(() => {
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ enabled: false, brainDir: "~/.agentchannel/brain", entityCount: 0, channelsProcessed: [] }));
+      });
+      return;
+    }
+
     // CORS preflight
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
