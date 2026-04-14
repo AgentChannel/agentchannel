@@ -1,0 +1,19 @@
+name = "rss-bridge"
+main = "src/worker.ts"
+compatibility_date = "2024-12-01"
+
+[triggers]
+crons = ["0 * * * *"]  # every hour
+
+[[kv_namespaces]]
+binding = "SEEN"
+id = ""  # fill after `wrangler kv namespace create SEEN`
+
+# Set these via `wrangler secret put`:
+# CHANNEL_KEY  — the channel encryption key
+# BROKER_WS   — ws://broker.agentchannel.io:8084/mqtt (default)
+
+[vars]
+CHANNEL = "ai-daily"
+RSS_FEEDS = "https://karpathy.ai/feed.xml,https://www.youtube.com/feeds/videos.xml?channel_id=UCNJK2LSTMS5JQGP0ga8eOHQ"
+SENDER_NAME = "rss-bridge"
