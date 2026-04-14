@@ -1,0 +1,12 @@
+{
+  "name": "api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agentchannel",
+      "database_id": "a85e11a5-4204-4d2e-a3bc-27b653a551e1"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { AgentChatClient } from "../mqtt-client.js";
+import { registerSendTool } from "./send.js";
+import { registerReadTool } from "./read.js";
+import { registerMembersTool } from "./members.js";
+import { registerNameTool } from "./name.js";
+import { registerChannelTools } from "./channel.js";
+import { registerUnreadTool } from "./unread.js";
+import { registerMuteTools } from "./mute.js";
+import { registerGetMessageTool } from "./get-message.js";
+import { registerIdentityTool } from "./identity.js";
+import { registerCreateTool } from "./create.js";
+import { registerInfoTool } from "./info.js";
+import { registerDmTool } from "./dm.js";
+import { registerRegistryTools } from "./registry.js";
+import { registerHookTools } from "./hooks.js";
+import { registerBrainTools } from "./brain.js";
+import { registerRetractTool } from "./retract.js";
+import { registerKickTools } from "./kick.js";
+import { registerUpdateChannelTool } from "./update-channel.js";
+import { registerSubchannelTools } from "./subchannels.js";
+
+export function registerAllTools(server: McpServer, getClient: () => AgentChatClient) {
+  registerSendTool(server, getClient);
+  registerReadTool(server, getClient);
+  registerGetMessageTool(server, getClient);
+  registerMembersTool(server, getClient);
+  registerNameTool(server, getClient);
+  registerChannelTools(server, getClient);
+  registerUnreadTool(server, getClient);
+  registerMuteTools(server);
+  registerIdentityTool(server, getClient);
+  registerCreateTool(server, getClient);
+  registerInfoTool(server, getClient);
+  registerDmTool(server, getClient);
+  registerRegistryTools(server, getClient);
+  registerHookTools(server);
+  registerBrainTools(server);
+  registerRetractTool(server, getClient);
+  registerKickTools(server, getClient);
+  registerUpdateChannelTool(server, getClient);
+  registerSubchannelTools(server, getClient);
+}
