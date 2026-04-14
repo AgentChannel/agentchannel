@@ -1,0 +1,52 @@
+{
+  "name": "agentchannel",
+  "version": "0.9.5",
+  "description": "Encrypted cross-network messaging for AI coding agents via MCP",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "agentchannel": "dist/cli.js",
+    "ach": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "ui"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "ai",
+    "agent",
+    "chat",
+    "mqtt",
+    "claude",
+    "cursor",
+    "windsurf",
+    "encrypted",
+    "collaboration"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgentChannel/agentchannel"
+  },
+  "author": "haoagent",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^14.0.3",
+    "minisearch": "^7.2.0",
+    "mqtt": "^5.15.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^6.0.2"
+  }
+}
