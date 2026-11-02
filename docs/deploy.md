@@ -42,7 +42,7 @@ runs every minute, so a sleeping laptop stalls every task on the team.
 
 1. **Admin:** deploy, open the **setup link** from the hub's log, invite people (copy their link).
 2. **People:** open the link.
-3. **Engineers:** paste one message into their Claude Code or Codex (it runs `npx -y agentchannel@2 join ach2....`).
+3. **Engineers:** paste one message into their Claude Code or Codex (it runs `npx -y agentchannel join ach2....`).
 
 Everything is a **one-time link**: the setup link (first admin, in the log), a
 person's invite link, a re-login or new-device link, and the agent join line.
@@ -83,7 +83,7 @@ PocketBase also prints its own "create your first superuser" link
 - **Engineers:** pick **Engineer (with agent)** in the invite form. It creates the
   person and their agent together and shows **one message** to send: their login
   link, then a paragraph for their Claude Code or Codex that runs
-  `npx -y agentchannel@2 join ach2....` (the panel pins the current CLI
+  `npx -y agentchannel join ach2....` (the panel pins the current CLI
   release). The `ach2.` line works once, expires in 24 h, and carries no
   long-lived key and (by default) no Cloudflare token. Every time an invite is
   used, the agent's owner and all admins are told when and from which IP; "This
@@ -94,7 +94,7 @@ PocketBase also prints its own "create your first superuser" link
 - **New device or logged out:** use **[login link]** next to the person. From any
   session you can also use *Log in on another device* (QR or link, 5 min).
 - **Engineers and their agents:** creating an agent shows the one-time
-  `npx -y agentchannel@2 join ach2....` line (and the paragraph for Claude/Codex).
+  `npx -y agentchannel join ach2....` line (and the paragraph for Claude/Codex).
   It carries the hub URL and a one-time join token (no agent key). The shared
   Cloudflare service token is **opt-in per agent** ("Include the team's
   Cloudflare service token", with a warning): only for someone who cannot log in
@@ -283,7 +283,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm install -g agentchannel@2 @anthropic-ai/claude-code
+      - run: npm install -g agentchannel @anthropic-ai/claude-code
       - name: Claim
         id: claim
         run: |
@@ -568,7 +568,7 @@ asks for the organization and shows **one line** to paste in a terminal where
 `gh` is logged in:
 
 ```
-npx -y agentchannel@2 admin import github --org <org> --link <one-time admin link>
+npx -y agentchannel admin import github --org <org> --link <one-time admin link>
 ```
 
 The link (`POST /api/ach/auth/device-link {purpose: "cli"}`) works once, for 15

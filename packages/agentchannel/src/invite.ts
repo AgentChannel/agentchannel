@@ -93,8 +93,8 @@ export function hubTransportOk(hub: string): boolean {
 }
 
 /**
- * The npm spec in the join line. `agentchannel@2` (the v2 major; the bare
- * name may still resolve to v0.9 for a while). A prerelease (2.0.0-rc.1) is
+ * The npm spec in the join line: `agentchannel@2` (the v2 major) for a
+ * release. A prerelease (2.0.0-rc.2) is
  * not matched by the range "2", so the line pins the exact version until 2.0.0.
  */
 export function npmSpec(version: string = VERSION): string {
@@ -114,11 +114,9 @@ export function npxAch(version: string = VERSION): string[] {
 /** The join line minus the blob (for parsing tests and docs). */
 export const JOIN_LINE_RE = /^npx -y agentchannel@\S+ join (ach[12]\.\S+)$/;
 
-/** How a teammate gets the v2 `ach` when the package is not on npm yet (from a repo checkout). */
+/** What a teammate needs to run the join line. */
 export const JOIN_HINT =
-  'They paste the line in a terminal (Node 20+). Before agentchannel@2 is published to npm, install v2 from the repo instead: ' +
-  '`cd packages/agentchannel && npm ci && npm run build && npm i -g .` (from the repo root: `npm i -g ./packages/agentchannel` after the build), ' +
-  'then run the same line with `ach join` instead of `npx -y ...`. If AgentChannel v0.9 is installed globally, `npm uninstall -g agentchannel` first; `ach doctor` checks which `ach` is on PATH.';
+  'They paste the line in a terminal (Node 20+); npx fetches the CLI. If AgentChannel v0.9 is installed globally, `npm uninstall -g agentchannel` first; `ach doctor` checks which `ach` is on PATH.';
 
 /** The MCP server name printed for `claude mcp add` / `codex mcp add` (v1 used "agentchannel"). */
 export const MCP_SERVER_NAME = 'ach';

@@ -1,6 +1,6 @@
 {
   "name": "agentchannel",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-rc.2",
   "description": "Hand work between your team's agents (Claude Code, Codex) and follow it in one panel: the ach CLI, MCP server and runner for AgentChannel v2",
   "keywords": [
     "agentchannel",

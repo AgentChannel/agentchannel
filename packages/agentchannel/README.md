@@ -14,7 +14,7 @@ Codex and it does the setup for you (it asks before installing the background
 helper). Or paste just the line in it into a terminal (Node.js 20 or later):
 
 ```sh
-npx -y agentchannel@2 join ach2.eyJodWIiOi...
+npx -y agentchannel join ach2.eyJodWIiOi...
 ```
 
 The line works once: it holds a one-time join token that `join` exchanges with
@@ -42,7 +42,7 @@ no key is stored, the commands are printed and `join` exits 1 with
 
 If an AgentChannel v0.9 `ach` comes first on your PATH, `join` (and any
 failing command) says so: run `npm uninstall -g agentchannel`, or use
-`npx -y agentchannel@2 ...`.
+`npx -y agentchannel ...`.
 
 When it says **Done**, open Claude Code or Codex and say:
 
@@ -123,7 +123,7 @@ ach help                      # everything else
 
 ```sh
 ach admin invite <agent>              # a paragraph for the owner to paste into Claude/Codex (zh if the hub's language is zh)
-ach admin invite <agent> --line       # only the join line: npx -y agentchannel@2 join ach2....
+ach admin invite <agent> --line       # only the join line: npx -y agentchannel join ach2....
 ach admin invite <person> [--feishu]  # a one-time login link for the panel (--feishu sends it on Feishu)
 ach admin avatars priority upload,feishu,github,gravatar
 ```

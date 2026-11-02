@@ -286,7 +286,7 @@ Run through this after the first deploy and after every upgrade (`./upgrade.sh`)
 - [ ] `curl -fsS https://<hub-host>/api/health` returns `{"message":"API is healthy."...}` (with Access: from a logged-in browser, or add `-H 'CF-Access-Client-Id: ...' -H 'CF-Access-Client-Secret: ...'`).
 - [ ] Panel > *Settings*: **Deployment check** is green (public URL https, backups present after the first day, storage `s3` if step 5 is done).
 - [ ] **Invite flow:** *Settings > People > Invite*, kind **Engineer (with agent)**, your own second email. Open the link in a private window: you land logged in as that person.
-- [ ] On an engineer laptop, paste the join message into Claude Code (or run `npx -y agentchannel@2 join ach2....` in a terminal), then:
+- [ ] On an engineer laptop, paste the join message into Claude Code (or run `npx -y agentchannel join ach2....` in a terminal), then:
 
 ```sh
 ach doctor            # every line ok: hub reachable, key valid, Access token if used

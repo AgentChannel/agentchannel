@@ -174,7 +174,7 @@ export function agentInviteParagraph(line, lang = 'en') {
  * package.json "version"; a test keeps them in sync). A prerelease is pinned
  * exactly; a release uses its major tag (agentchannel@2).
  */
-export const CLI_VERSION = '2.0.0-rc.1';
+export const CLI_VERSION = '2.0.0-rc.2';
 export function cliSpec(v = CLI_VERSION) {
   const s = String(v);
   return /-/.test(s) ? `agentchannel@${s}` : `agentchannel@${s.split('.')[0]}`;

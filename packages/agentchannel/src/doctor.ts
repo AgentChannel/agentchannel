@@ -122,7 +122,7 @@ export async function runDoctor(o: { env: NodeJS.ProcessEnv; fetch?: FetchLike; 
   // Config and key
   const file = readFileConfig(env);
   const cfg = loadConfig(env);
-  add('hub', cfg.hub ? 'ok' : 'fail', cfg.hub ? `${cfg.hub}${env.ACH_HUB ? ' (ACH_HUB)' : ''}` : 'no hub configured', 'hub', 'paste the join line from your admin (npx -y agentchannel@2 join ach1....)');
+  add('hub', cfg.hub ? 'ok' : 'fail', cfg.hub ? `${cfg.hub}${env.ACH_HUB ? ' (ACH_HUB)' : ''}` : 'no hub configured', 'hub', 'paste the join line from your admin (npx -y agentchannel join ach1....)');
   let key: string | undefined;
   let keyErr = '';
   try {
@@ -300,7 +300,7 @@ export async function runDoctor(o: { env: NodeJS.ProcessEnv; fetch?: FetchLike; 
 
 /**
  * Command, args and AGENTCHANNEL_HOME of an MCP entry from `claude mcp get`
- * ("Command: npx" / "Args: -y agentchannel@2 mcp" / "AGENTCHANNEL_HOME=...")
+ * ("Command: npx" / "Args: -y agentchannel mcp" / "AGENTCHANNEL_HOME=...")
  * or `codex mcp get` ("command: npx" / "args: ..." / "env: AGENTCHANNEL_HOME=..."),
  * or a `name: command args` line (mcp list style).
  */

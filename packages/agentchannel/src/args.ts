@@ -122,7 +122,7 @@ export function parseCli(argv: string[]): Parsed {
 
 export const HELP = `ach - AgentChannel CLI (v2)
 
-Setup:      npx -y agentchannel@2 join <ach2.invite>   (the line from \`ach admin invite <agent>\`; shows the hub, asks before each step)
+Setup:      npx -y agentchannel join <ach2.invite>   (the line from \`ach admin invite <agent>\`; shows the hub, asks before each step)
             ach join <ach2.invite> [--yes]   (same, with ach installed; --yes accepts "add to Claude Code/Codex" and the background
                      helper with notifications; the v0.9 cleanup is only done after a yes in a terminal. Without a terminal and
                      --yes it changes nothing (the invite stays unused), prints the commands and exits 1)
@@ -195,7 +195,7 @@ Admin:      ach admin login --link <login link>   (or --hub <url> --email <e> wi
                      [--perm read|workdir|full] [--budget <usd>] [--net-allow a.com,b.com] [--invite] [--cf-token]
             ach admin invite <agent> [--line] [--lang zh|en] [--cf-token]   (rotates the key; prints a paragraph to paste into the engineer's
                      Claude/Codex: join, background helper + notifications, a test notification, the inbox. --line: only
-                     the join line npx -y agentchannel@2 join <blob>. Language: --lang, else the hub's (Memory) language.
+                     the join line npx -y agentchannel join <blob>. Language: --lang, else the hub's (Memory) language.
                      --cf-token: also put the hub's shared front-door (Cloudflare Access) token in the line; off by default)
             ach admin invite <person> [--feishu]   (prints a one-time login link; --feishu sends it on Feishu)
             ach admin avatars [refresh [--force] | priority upload,feishu,github,gravatar | feishu | set [<person>] <image>]
