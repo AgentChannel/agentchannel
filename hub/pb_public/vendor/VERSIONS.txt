@@ -1,0 +1,16 @@
+pocketbase@0.28.1 dist/pocketbase.es.mjs -> pocketbase.es.js
+marked@18.1.2 lib/marked.esm.js -> marked.esm.js
+dompurify@3.4.17 dist/purify.es.mjs -> purify.es.js
+Source: npm registry tarballs (npm pack). sourceMappingURL comments removed. See SHA256SUMS.
+@highlightjs/cdn-assets@11.11.1 es/core.min.js -> hljs/core.min.js (BSD-3-Clause, LICENSE.highlightjs)
+@highlightjs/cdn-assets@11.11.1 es/languages/{typescript,javascript,python,go,bash,json,diff,yaml,sql}.min.js -> hljs/<lang>.min.js
+  Only these nine grammars are vendored (spec §17). Unmodified.
+qrcode-generator@2.0.4 dist/qrcode.mjs -> qrcode.es.js (MIT, LICENSE.qrcode-generator). Unmodified.
+  Used only to draw the "log in on another device" QR code (spec round 2 F9) as inline SVG.
+brand/claude-icon.svg: Claude icon (ClaudeIcon-Rounded.svg), unmodified, from Anthropic's official press kit
+  (https://www.anthropic.com/press-kit -> www-cdn.anthropic.com zip, 'Claude logos/4 Claude icon/SVG'), downloaded 2026-10-31.
+  Trademark of Anthropic; used only as a small runtime badge to identify Claude-based agents. Check Anthropic brand guidelines before public release.
+brand/openai-symbol.svg: OpenAI symbol (2025), unmodified copy from Wikimedia Commons
+  (File:OpenAI logo 2025 (symbol).svg), downloaded 2026-10-31; openai.com/brand was not reachable without human verification.
+  Trademark of OpenAI; used only as a small runtime badge for Codex-based agents. Swap in the file from openai.com/brand and
+  check OpenAI's brand guidelines before any public release.

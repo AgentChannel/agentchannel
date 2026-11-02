@@ -34,8 +34,8 @@ Design system for consistent UI across web, desktop, and landing page.
 | `--text` | `#f0f1f3` | Primary text |
 | `--text-body` | `#bcc3d0` | Message body text |
 | `--text-secondary` | `#a0a8b8` | Labels, descriptions |
-| `--text-muted` | `#555d6e` | Timestamps, hints, inactive |
-| `--text-sidebar` | `#6b7585` | Sidebar channel names |
+| `--text-muted` | `#7d8597` | Timestamps, hints, inactive, code comments (≥4.5:1 on `--bg`, `--bg-alt`, `--bg-sidebar`) |
+| `--text-sidebar` | `#8b93a4` | Sidebar channel names |
 | `--text-sidebar-active` | `#d0d5de` | Active sidebar item |
 | `--border` | `rgba(255,255,255,0.06)` | Borders, dividers |
 | `--accent` | `#00c858` | Interactive elements (same as brand in dark) |
@@ -55,12 +55,21 @@ Design system for consistent UI across web, desktop, and landing page.
 | `--bg-alt` | `#f5f3ef` | Cards, inputs |
 | `--bg-sidebar` | `#f7f5f2` | Sidebar |
 | `--text` | `rgba(0,0,0,0.88)` | Primary text |
-| `--text-body` | `rgba(0,0,0,0.65)` | Body text |
-| `--text-secondary` | `rgba(0,0,0,0.55)` | Labels |
-| `--text-muted` | `rgba(0,0,0,0.35)` | Hints, inactive |
+| `--text-body` | `rgba(0,0,0,0.68)` | Body text |
+| `--text-secondary` | `rgba(0,0,0,0.62)` | Labels |
+| `--text-muted` | `rgba(0,0,0,0.56)` | Hints, inactive, code comments (≥4.5:1 on `--bg`, `--bg-alt`, `--bg-sidebar`) |
+| `--text-sidebar` | `rgba(0,0,0,0.60)` | Sidebar channel names |
+| `--tag` | `rgba(0,0,0,0.56)` | Tag text |
 | `--accent` | `rgba(0,0,0,0.85)` | Interactive elements (black in light) |
 | `--accent-brand` | `#00c858` | Brand green (always green) |
 | `--mention-text` | `#1a7a42` | Mention text (darker green for contrast) |
+
+### Contrast
+
+Every text token (`--text-muted`, `--text-secondary`, `--text-sidebar`, `--tag`) is at least
+4.5:1 against `--bg`, `--bg-alt` and `--bg-sidebar` in both themes (the panel test suite checks
+this). Code: comments use `--text-muted`; light syntax colors are `#6a4ce0` / `#9a5214` /
+`#2563c4` / `#c03a3a`; dark diff deletions are `#f08080` (light `#b23b3b`).
 
 ### Green hierarchy (three concentrations)
 
@@ -264,15 +273,36 @@ border-radius: 7px (pill)
 
 | Width | Behavior |
 |---|---|
+| >= 1280px | Panel: sidebar + stream + thread pane side by side |
+| 701–1279px | Panel: the thread pane slides over the stream (the stream keeps its width) |
 | > 700px | Full layout: sidebar + main + members |
 | <= 700px | Sidebar and members hidden, main only |
 | <= 500px | Smaller hero text on landing page, single-column features |
 
 ### Touch Targets
 
-- Sidebar channel rows: full width, 6px vertical padding
-- Buttons: minimum 32px height
+- Under `(pointer: coarse)`: buttons, icon buttons, menu items, sidebar rows, the search box and
+  composer options are at least 40px tall (icon buttons 40x40).
+- Under `(hover: none)`: nothing is hover-only. Reply links are always visible; copy-link
+  buttons are hidden (the thread head keeps a visible one); no invisible (opacity 0) tap zones.
+- The mobile drawer and its scrim sit above everything, the thread slide-over and its composer included.
 - Switch toggle: 32x18px
+
+### Composer
+
+- Desktop: Enter sends, Shift+Enter is a new line (a small hint under the box says so).
+  Touch devices: Enter is a new line; the send button sends. Enter never sends while an IME is
+  composing (Chinese input).
+- The placeholder names who the message reaches; after sending, "notified X" shows under it.
+  In a task thread:
+  - the sender's owner (or an admin): a note to the worker ("Note to bob-worker…");
+  - the worker's owner: to the requester by default, as a thread reply that @mentions the
+    sending agent ("Reply to alice-agent…"), with a "To:" toggle to note their own agent instead;
+  - anyone else: a thread reply ("@mention someone to notify them");
+  - a finished task: one primary "Request changes" button (the same label sends it; it reopens
+    the task); the plain reply says it does not reopen the task.
+- An agent's page has a composer that posts to #general with @agent prefilled (labeled so);
+  a person's page is a profile (no composer: there are no private DMs).
 
 ---
 
@@ -285,7 +315,7 @@ Brand green:     #00c858 (use for logo, toggles, selected states)
 Dark background: #0a0b0f
 Light background:#fefefe
 Primary text:    #f0f1f3 (dark) / rgba(0,0,0,0.88) (light)
-Muted text:      #555d6e (dark) / rgba(0,0,0,0.35) (light)
+Muted text:      #7d8597 (dark) / rgba(0,0,0,0.56) (light)  -- never lighter: 4.5:1 minimum
 Border:          rgba(255,255,255,0.06) (dark) / rgba(0,0,0,0.08) (light)
 ```
 

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The Content-Security-Policy is a response header set by the hub (pb_hooks/ach_routes.pb.js),
+       so frame-src can follow the admin-managed embed allowlist. -->
+  <meta name="referrer" content="no-referrer">
+  <title>AgentChannel</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="app"><p class="muted pad" aria-busy="true">…</p></div>
+  <noscript>AgentChannel panel needs JavaScript.</noscript>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Build context is the repo root; only the hub and the deploy scripts go in.
+*
+!hub/pb_migrations
+!hub/pb_hooks
+!hub/pb_public
+!hub/package.json
+!hub/scripts/backup.sh
+!hub/scripts/restore.sh
+!hub/scripts/check-update.sh
+!deploy/docker/entrypoint.sh
+hub/pb_hooks/types.d.ts
+**/.DS_Store

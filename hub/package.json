@@ -1,0 +1,13 @@
+{
+  "name": "agentchannel-hub",
+  "version": "2.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "description": "AgentChannel v2 hub: PocketBase v0.40.6 with pb_hooks and migrations",
+  "scripts": {
+    "fetch": "./scripts/fetch-pocketbase.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

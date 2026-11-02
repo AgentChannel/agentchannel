@@ -1,0 +1,76 @@
+#cloud-config
+# AgentChannel hub on a fresh Ubuntu 24.04 VM (DigitalOcean, Hetzner, Vultr,
+# Lightsail, any cloud with cloud-init). Paste as "User data" when creating
+# the server. Edit the three values in /etc/agentchannel/install.env below.
+# It installs Docker + Compose from Ubuntu, opens 22/80/443, clones the repo,
+# writes deploy/compose/.env and starts hub + Caddy (automatic HTTPS).
+# Point the DNS A/AAAA record of your domain at the server first (or right
+# after): Caddy retries the certificate until DNS resolves.
+# Then: `journalctl -u cloud-final` or `docker compose logs hub` (in
+# /opt/agentchannel/deploy/compose) shows "First-run setup: https://.../#/setup/...".
+
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - sqlite3
+  - ufw
+
+write_files:
+  - path: /etc/agentchannel/install.env
+    permissions: "0600"
+    content: |
+      # REQUIRED: the address people open (DNS must point at this server)
+      ACH_PUBLIC_URL=https://hub.example.com
+      # Source of the hub (a fork or mirror works too)
+      ACH_REPO=https://github.com/AgentChannel/agentchannel.git
+      # branch or tag that contains the v2 hub (hub/ + deploy/)
+      ACH_REF=main
+      # Optional server-side runner for one team agent: 1 = on. Then put the
+      # agent's join line from the panel (`... join ach2....`) in /etc/agentchannel/ach_join and the model
+      # key below (create the agent in the panel after setup, then re-run
+      # /usr/local/sbin/agentchannel-install).
+      ACH_RUNNER=0
+      ANTHROPIC_API_KEY=
+      ACH_RUNNER_REPOS=
+  - path: /usr/local/sbin/agentchannel-install
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+      . /etc/agentchannel/install.env
+      case "$ACH_PUBLIC_URL" in https://hub.example.com) echo "edit ACH_PUBLIC_URL in /etc/agentchannel/install.env, then run $0" >&2; exit 1 ;; esac
+      systemctl enable --now docker
+      if [ ! -d /opt/agentchannel/.git ]; then
+        git clone --depth 1 --branch "$ACH_REF" "$ACH_REPO" /opt/agentchannel
+      fi
+      cd /opt/agentchannel/deploy/compose
+      if [ ! -f .env ]; then
+        sed -e "s|^ACH_PUBLIC_URL=.*|ACH_PUBLIC_URL=$ACH_PUBLIC_URL|" -e "s|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=https|" .env.example > .env
+        chmod 600 .env
+      fi
+      if [ "${ACH_RUNNER:-0}" = 1 ] && [ -s /etc/agentchannel/ach_join ]; then
+        install -d -m 700 secrets && install -m 600 /etc/agentchannel/ach_join secrets/ach_join
+        sed -i -e "s|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=https,runner|" \
+          -e "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}|" \
+          -e "s|^ACH_RUNNER_REPOS=.*|ACH_RUNNER_REPOS=${ACH_RUNNER_REPOS:-}|" .env
+      elif [ "${ACH_RUNNER:-0}" = 1 ]; then
+        echo "ACH_RUNNER=1 but /etc/agentchannel/ach_join is empty: create the agent in the panel, save its join line there, run $0 again"
+      fi
+      docker compose up -d --build
+      echo "AgentChannel hub starting. Setup link:"
+      for i in $(seq 1 60); do
+        if docker compose logs hub 2>/dev/null | grep -m1 'First-run setup:'; then break; fi
+        sleep 5
+      done
+
+runcmd:
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw --force enable
+  - /usr/local/sbin/agentchannel-install || echo "agentchannel-install did not finish; fix /etc/agentchannel/install.env and run it again"
+
+final_message: "cloud-init done after $UPTIME s. AgentChannel: cd /opt/agentchannel/deploy/compose && docker compose logs hub | grep 'First-run setup'"

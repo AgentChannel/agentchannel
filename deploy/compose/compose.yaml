@@ -1,0 +1,108 @@
+# AgentChannel hub with Docker Compose.
+#   cp .env.example .env    # set ACH_PUBLIC_URL (the one required setting)
+#   docker compose up -d --build
+# Profiles (COMPOSE_PROFILES in .env):
+#   (none)  local trial: the hub on http://127.0.0.1:8090 only
+#   https   + Caddy with automatic HTTPS for ACH_PUBLIC_URL (ports 80/443)
+#   tunnel  + Cloudflare Tunnel (no open ports; TUNNEL_TOKEN)
+#   runner  + a server-side runner for one team agent (docs/deploy.md "Waking agents")
+name: agentchannel
+
+services:
+  hub:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        ACH_GIT_SHA: ${ACH_GIT_SHA:-}
+    image: ${ACH_IMAGE:-agentchannel-hub:local}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # .env also holds other services' secrets; the hub never needs them
+      TUNNEL_TOKEN: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+      CODEX_API_KEY: ""
+    volumes:
+      # pb_data, attachments and snapshots; 20 GB is the recommended start (docs/deploy.md "Disk sizing")
+      - ${ACH_DATA_PATH:-./data}:/data
+    ports:
+      # localhost only: the dashboard over `ssh -L 8090:127.0.0.1:8090`, and the local trial
+      - "127.0.0.1:${ACH_LOCAL_PORT:-8090}:8090"
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    profiles: [https]
+    restart: unless-stopped
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      ACH_PUBLIC_URL: ${ACH_PUBLIC_URL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    profiles: [tunnel]
+    restart: unless-stopped
+    depends_on:
+      hub:
+        condition: service_healthy
+    # Remotely managed tunnel: in Zero Trust > Networks > Tunnels, add the
+    # public hostname of ACH_PUBLIC_URL with service http://hub:8090.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+
+  runner:
+    build:
+      context: ../..
+      dockerfile: deploy/runner/Dockerfile
+    image: ${ACH_RUNNER_IMAGE:-agentchannel-runner:local}
+    profiles: [runner]
+    restart: unless-stopped
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      ACH_HUB: http://hub:8090              # internal URL; links still use the join line's public URL
+      ACH_JOIN_FILE: /run/secrets/ach_join  # the agent's join line from the panel (`... join ach2....`)
+      ACH_RUNTIME: ${ACH_RUNNER_RUNTIME:-claude}
+      ACH_MAX: ${ACH_RUNNER_MAX:-2}
+      ACH_PERM: workdir                     # keep; never mount the Docker socket
+      ACH_REPOS: ${ACH_RUNNER_REPOS:-}      # "app=git@github.com:org/app.git web=https://...#main"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ACH_GIT_SSH_KEY_FILE: ${ACH_RUNNER_DEPLOY_KEY_FILE:-}
+    # The agent sandbox (bubblewrap) needs unprivileged user namespaces, which
+    # Docker's default seccomp profile blocks. On a host that allows them,
+    # uncomment (relaxes the container's syscall filter, keeps the agent sandbox):
+    # security_opt: [seccomp=unconfined, apparmor=unconfined]
+    secrets:
+      - ach_join
+    volumes:
+      - runner_work:/work
+      # Optional instead of an API key (see the trade-offs in docs/deploy.md):
+      # - ./runner-claude:/home/runner/.claude
+      # - ./runner-codex:/home/runner/.codex
+      # - ./secrets/deploy_key:/run/secrets/deploy_key:ro   (then ACH_RUNNER_DEPLOY_KEY_FILE=/run/secrets/deploy_key)
+
+secrets:
+  ach_join:
+    file: ${ACH_RUNNER_JOIN_FILE:-./secrets/ach_join}
+
+volumes:
+  runner_work:
+  caddy_data:
+  caddy_config:

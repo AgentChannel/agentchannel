@@ -1,0 +1,14 @@
+# Caddy obtains and renews the certificate for ACH_PUBLIC_URL automatically
+# (Let's Encrypt / ZeroSSL). DNS must point at this server, ports 80 and 443 open.
+{$ACH_PUBLIC_URL} {
+	# The hub sets its own CSP and security headers; pass them through.
+	# Realtime (server-sent events) must not be buffered.
+	reverse_proxy hub:8090 {
+		flush_interval -1
+	}
+	# No compression: it can buffer the realtime stream.
+	log {
+		output stdout
+		format console
+	}
+}

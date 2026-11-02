@@ -1,0 +1,7 @@
+*
+!packages/agentchannel/package.json
+!packages/agentchannel/package-lock.json
+!packages/agentchannel/tsconfig.json
+!packages/agentchannel/src
+!deploy/runner/entrypoint.sh
+**/.DS_Store

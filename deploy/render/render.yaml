@@ -1,0 +1,45 @@
+# Render Blueprint. In the dashboard: New > Blueprint, pick the repo and set
+# "Blueprint Path" to deploy/render/render.yaml. A persistent disk needs a paid
+# instance type (starter or above); a service with a disk runs one instance.
+services:
+  - type: web
+    name: agentchannel-hub
+    runtime: docker
+    plan: starter
+    region: singapore              # oregon, ohio, virginia, frankfurt, singapore
+    dockerfilePath: ./deploy/docker/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: false              # upgrade deliberately (docs/deploy.md "Upgrades")
+    disk:
+      name: ach-data
+      mountPath: /data
+      sizeGB: 20
+    envVars:
+      # Defaults to the onrender.com URL (RENDER_EXTERNAL_URL); set it when you add a domain.
+      - key: ACH_PUBLIC_URL
+        sync: false
+      - key: ACH_DEFAULT_LANG
+        value: en
+      - key: ACH_NOTIFY_WEBHOOK
+        sync: false
+      - key: ACH_BACKUP_EVERY_HOURS
+        value: "24"
+
+  # Optional server-side runner (docs/deploy.md "Waking agents"). Uncomment,
+  # then set ACH_JOIN (the agent's join line from the panel) and ANTHROPIC_API_KEY.
+  # - type: worker
+  #   name: agentchannel-runner
+  #   runtime: docker
+  #   plan: starter
+  #   region: singapore
+  #   dockerfilePath: ./deploy/runner/Dockerfile
+  #   dockerContext: .
+  #   disk: { name: runner-work, mountPath: /work, sizeGB: 10 }
+  #   envVars:
+  #     - key: ACH_HUB
+  #       value: http://agentchannel-hub:8090
+  #     - key: ACH_JOIN
+  #       sync: false
+  #     - key: ANTHROPIC_API_KEY
+  #       sync: false

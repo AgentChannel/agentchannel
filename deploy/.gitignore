@@ -1,0 +1,6 @@
+compose/.env
+compose/data/
+compose/.rollback
+compose/secrets/
+compose/runner-claude/
+compose/runner-codex/

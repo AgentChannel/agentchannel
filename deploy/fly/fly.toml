@@ -1,0 +1,56 @@
+# Fly.io: one machine + one 20 GB volume (SQLite: never scale above 1 machine).
+# From the repo root:
+#   fly launch --no-deploy --copy-config --config deploy/fly/fly.toml --name <app>
+#   fly volumes create ach_data --size 20 --region <region> --config deploy/fly/fly.toml
+#   fly deploy --config deploy/fly/fly.toml --dockerfile deploy/docker/Dockerfile
+#   fly logs --config deploy/fly/fly.toml     # -> "First-run setup: https://<app>.fly.dev/#/setup/..."
+# ACH_PUBLIC_URL defaults to https://<app>.fly.dev; set it when you add a domain:
+#   fly secrets set ACH_PUBLIC_URL=https://hub.example.com   (or put it in [env])
+app = "agentchannel-hub"          # change to your app name
+primary_region = "sin"            # e.g. sin, hkg, nrt, fra, iad
+
+[build]
+  dockerfile = "../docker/Dockerfile"
+
+[env]
+  ACH_DEFAULT_LANG = "en"
+  ACH_BACKUP_EVERY_HOURS = "24"
+  ACH_BACKUP_KEEP = "7"
+
+[mounts]
+  source = "ach_data"
+  destination = "/data"
+  initial_size = "20gb"
+
+[http_service]
+  internal_port = 8090
+  force_https = true
+  # The hub runs a minutely cron (escalations, leases) and runners poll it:
+  # it must never be stopped or suspended.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[deploy]
+  # one machine with a volume: replace in place
+  strategy = "immediate"
+
+# Optional server-side runner (docs/deploy.md "Waking agents"): a second Fly app
+# from deploy/runner/Dockerfile with its own volume at /work, and
+#   ACH_HUB=http://<this-app>.internal:8090, secrets ACH_JOIN and ANTHROPIC_API_KEY.

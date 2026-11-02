@@ -4,18 +4,21 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [18, 20, 22]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-      - run: npm ci
-      - run: npm run build
+          node-version: 22
+      - run: make deps
+      - run: make build
+      - name: The hub starts and applies its migrations
+        run: |
+          cd hub
+          ./bin/pocketbase serve --dir /tmp/pb --hooksDir pb_hooks --migrationsDir pb_migrations --publicDir pb_public --http 127.0.0.1:8090 > /tmp/hub.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8090/api/health && exit 0; sleep 1; done
+          cat /tmp/hub.log; exit 1
